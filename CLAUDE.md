@@ -95,7 +95,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 **Functions**
 
 - A function does one thing; if its name needs an "and", split it.
-- Guard clauses and early returns over nested `if`s (see `UsersService.findEntity` for the house style).
+- Guard clauses and early returns over nested `if`s (see `UsersService.verifyPassword` for the house style).
 - No boolean flag parameters that switch behavior (`doStuff(true)`) — write two explicitly named functions.
 
 **Naming**
@@ -137,7 +137,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 When the corresponding capability is added to a project built on this template, use these — do not re-litigate:
 
 - **Database**: MongoDB + Mongoose via `@nestjs/mongoose` — schema classes with `@Schema`/`@Prop`, models injected with `@InjectModel`, connection through `MongooseModule.forRootAsync` reading `MONGODB_URI`. Mongoose documents never leave the service layer: use `.lean()` for reads and map to safe/response shapes; API responses expose `id` as a string, never raw `_id`/ObjectId. Declare indexes in schemas; apply indexes, data transformations, and seeds through `migrate-mongo` migrations — never by hand against a shared database.
-- **Auth**: JWT with a short-lived access token + refresh token flow, implemented with `@nestjs/jwt` and hand-written Nest guards — no passport (`@nestjs/passport` and passport strategies must not be added). Refresh tokens are stored server-side hashed, so they can be rotated and revoked. Configuration comes from the validated env vars `JWT_ACCESS_SECRET`/`JWT_ACCESS_TTL` and `JWT_REFRESH_SECRET`/`JWT_REFRESH_TTL`. The `AuthModule` endpoints (`/auth/sign-up`, `/auth/sign-in`, `/auth/refresh`, `/auth/logout`) are scaffolded and return 501 until this flow is implemented.
+- **Auth**: JWT with a short-lived access token + refresh token flow, implemented with `@nestjs/jwt` and hand-written Nest guards — no passport (`@nestjs/passport` and passport strategies must not be added). Refresh tokens are stored server-side hashed, so they can be rotated and revoked. Configuration comes from the validated env vars `JWT_ACCESS_SECRET`/`JWT_ACCESS_TTL` and `JWT_REFRESH_SECRET`/`JWT_REFRESH_TTL`. `/auth/sign-up` is implemented (creates the account; token issuance arrives with the JWT flow), while `/auth/sign-in`, `/auth/refresh` and `/auth/logout` are scaffolded and return 501 until this flow is implemented.
 
 ## Assistant workflow rules
 

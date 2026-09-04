@@ -1,11 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { Connection } from 'mongoose';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module.js';
 
 describe('Auth endpoints scaffold (e2e)', () => {
   let app: INestApplication<App>;
+
+  // Email is unique to this spec file: e2e files run in parallel against the same database.
+  const credentials = { email: 'auth.jane@example.com', password: 'Secret123' };
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -14,25 +19,28 @@ describe('Auth endpoints scaffold (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     await app.init();
+
+    const connection = app.get<Connection>(getConnectionToken());
+    await connection
+      .collection('users')
+      .deleteMany({ email: credentials.email });
   });
 
   afterEach(async () => {
     await app.close();
   });
 
-  const credentials = { email: 'jane@example.com', password: 'Secret123' };
-
-  it('POST /auth/sign-up should return 501 until implemented', () => {
+  it('POST /auth/sign-up should create a user', () => {
     return request(app.getHttpServer())
       .post('/auth/sign-up')
-      .send({ ...credentials, name: 'Jane' })
-      .expect(501);
+      .send({ ...credentials, firstName: 'Jane', lastName: 'Doe' })
+      .expect(201);
   });
 
   it('POST /auth/sign-up should return 400 on invalid body', () => {
     return request(app.getHttpServer())
       .post('/auth/sign-up')
-      .send({ email: 'not-an-email', name: '', password: 'short' })
+      .send({ email: 'not-an-email', firstName: '', password: 'short' })
       .expect(400);
   });
 

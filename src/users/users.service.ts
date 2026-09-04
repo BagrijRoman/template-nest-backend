@@ -1,96 +1,66 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { CreateUserDto, UpdateUserDto } from './dto/index.js';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { CreateUserDto } from './dto/index.js';
 import { SafeUser, User } from './entities/index.js';
 import { hashPassword, verifyPasswordHash } from './password.util.js';
+
+const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
+
+type LeanUser = User & { _id: Types.ObjectId };
+
+const isDuplicateKeyError = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && (error as { code?: number }).code === MONGO_DUPLICATE_KEY_ERROR_CODE;
+
+const duplicateEmailException = (email: string): ConflictException =>
+  new ConflictException(`User with email "${email}" already exists`);
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  // In-memory storage; swap for a real database repository later.
-  private readonly users = new Map<string, User>();
+  constructor(@InjectModel(User.name) private readonly userModel: Model<User>) {}
 
-  create(createUserDto: CreateUserDto): SafeUser {
-    if (this.findEntityByEmail(createUserDto.email)) {
-      throw new ConflictException(`User with email "${createUserDto.email}" already exists`);
+  async create(createUserDto: CreateUserDto): Promise<SafeUser> {
+    // Fast application-level check; the unique index stays the race-safe guard (its violation is translated below).
+    if (await this.userModel.exists({ email: createUserDto.email })) {
+      throw duplicateEmailException(createUserDto.email);
     }
 
-    const now = new Date();
-    const user: User = {
-      id: randomUUID(),
-      email: createUserDto.email,
-      name: createUserDto.name,
-      passwordHash: hashPassword(createUserDto.password),
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    this.users.set(user.id, user);
-    this.logger.log(`User created: ${user.id}`);
-    return this.toSafeUser(user);
-  }
-
-  findAll(): SafeUser[] {
-    return [...this.users.values()].map((user) => this.toSafeUser(user));
-  }
-
-  findOne(id: string): SafeUser {
-    return this.toSafeUser(this.findEntity(id));
-  }
-
-  findByEmail(email: string): SafeUser | undefined {
-    const user = this.findEntityByEmail(email);
-    return user && this.toSafeUser(user);
+    try {
+      const created = await this.userModel.create({
+        email: createUserDto.email,
+        firstName: createUserDto.firstName,
+        lastName: createUserDto.lastName,
+        passwordHash: hashPassword(createUserDto.password),
+      });
+      this.logger.log(`User created: ${created.id}`);
+      return this.toSafeUser(created.toObject());
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        throw duplicateEmailException(createUserDto.email);
+      }
+      throw error;
+    }
   }
 
   /** Checks credentials without ever exposing the stored hash. Returns the user on success. */
-  verifyPassword(email: string, password: string): SafeUser | null {
-    const user = this.findEntityByEmail(email);
+  async verifyPassword(email: string, password: string): Promise<SafeUser | null> {
+    const user = await this.userModel.findOne({ email }).lean();
     if (!user || !verifyPasswordHash(password, user.passwordHash)) {
       return null;
     }
     return this.toSafeUser(user);
   }
 
-  update(id: string, updateUserDto: UpdateUserDto): SafeUser {
-    const user = this.findEntity(id);
-
-    if (updateUserDto.email && updateUserDto.email !== user.email && this.findEntityByEmail(updateUserDto.email)) {
-      throw new ConflictException(`User with email "${updateUserDto.email}" already exists`);
-    }
-
-    const { password, ...fields } = updateUserDto;
-    const updated: User = {
-      ...user,
-      ...fields,
-      ...(password ? { passwordHash: hashPassword(password) } : {}),
-      updatedAt: new Date(),
+  private toSafeUser(user: LeanUser): SafeUser {
+    return {
+      id: user._id.toString(),
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     };
-
-    this.users.set(id, updated);
-    return this.toSafeUser(updated);
-  }
-
-  remove(id: string): void {
-    this.findEntity(id);
-    this.users.delete(id);
-  }
-
-  private findEntity(id: string): User {
-    const user = this.users.get(id);
-    if (!user) {
-      throw new NotFoundException(`User with id "${id}" not found`);
-    }
-    return user;
-  }
-
-  private findEntityByEmail(email: string): User | undefined {
-    return [...this.users.values()].find((user) => user.email === email);
-  }
-
-  private toSafeUser(user: User): SafeUser {
-    const { passwordHash: _passwordHash, ...safeUser } = user;
-    return safeUser;
   }
 }

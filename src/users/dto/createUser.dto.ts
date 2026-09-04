@@ -11,9 +11,16 @@ export class CreateUserDto {
   @ApiProperty({ maxLength: 100, example: 'Jane' })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @IsNotEmpty({ message: 'name must not be empty' })
+  @IsNotEmpty({ message: 'firstName must not be empty' })
   @MaxLength(100)
-  name: string;
+  firstName: string;
+
+  @ApiProperty({ maxLength: 100, example: 'Doe' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty({ message: 'lastName must not be empty' })
+  @MaxLength(100)
+  lastName: string;
 
   @ApiProperty({
     minLength: 8,

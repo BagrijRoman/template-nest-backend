@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiNotImplementedResponse,
@@ -8,6 +9,8 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { UserResponseDto } from '../users/dto/index.js';
+import type { SafeUser } from '../users/entities/index.js';
 import { AuthService } from './auth.service.js';
 import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
 
@@ -17,11 +20,11 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('sign-up')
-  @ApiOperation({ summary: 'Sign up a new user and issue a token pair' })
-  @ApiCreatedResponse({ type: AuthResponseDto })
+  @ApiOperation({ summary: 'Sign up a new user' })
+  @ApiCreatedResponse({ type: UserResponseDto })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiNotImplementedResponse({ description: 'Not implemented yet' })
-  signUp(@Body() signUpDto: SignUpDto): AuthResponseDto {
+  @ApiConflictResponse({ description: 'A user with this email already exists' })
+  signUp(@Body() signUpDto: SignUpDto): Promise<SafeUser> {
     return this.authService.signUp(signUpDto);
   }
 

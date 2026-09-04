@@ -1,10 +1,15 @@
 import { Injectable, NotImplementedException } from '@nestjs/common';
+import type { SafeUser } from '../users/entities/index.js';
+import { UsersService } from '../users/users.service.js';
 import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
 
 @Injectable()
 export class AuthService {
-  signUp(_signUpDto: SignUpDto): AuthResponseDto {
-    throw new NotImplementedException('Sign-up is not implemented yet');
+  constructor(private readonly usersService: UsersService) {}
+
+  // Token issuance is added together with the JWT flow; until then sign-up only creates the account.
+  signUp(signUpDto: SignUpDto): Promise<SafeUser> {
+    return this.usersService.create(signUpDto);
   }
 
   signIn(_signInDto: SignInDto): AuthResponseDto {
