@@ -2,15 +2,16 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { randomUUID } from 'node:crypto';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
-import { User } from './entities/user.entity.js';
+import { SafeUser, User } from './entities/user.entity.js';
+import { hashPassword, verifyPasswordHash } from './password.util.js';
 
 @Injectable()
 export class UsersService {
   // In-memory storage; swap for a real database repository later.
   private readonly users = new Map<string, User>();
 
-  create(createUserDto: CreateUserDto): User {
-    if (this.findByEmail(createUserDto.email)) {
+  create(createUserDto: CreateUserDto): SafeUser {
+    if (this.findEntityByEmail(createUserDto.email)) {
       throw new ConflictException(`User with email "${createUserDto.email}" already exists`);
     }
 
@@ -19,19 +20,62 @@ export class UsersService {
       id: randomUUID(),
       email: createUserDto.email,
       name: createUserDto.name,
+      passwordHash: hashPassword(createUserDto.password),
       createdAt: now,
       updatedAt: now,
     };
 
     this.users.set(user.id, user);
-    return user;
+    return this.toSafeUser(user);
   }
 
-  findAll(): User[] {
-    return [...this.users.values()];
+  findAll(): SafeUser[] {
+    return [...this.users.values()].map((user) => this.toSafeUser(user));
   }
 
-  findOne(id: string): User {
+  findOne(id: string): SafeUser {
+    return this.toSafeUser(this.findEntity(id));
+  }
+
+  findByEmail(email: string): SafeUser | undefined {
+    const user = this.findEntityByEmail(email);
+    return user && this.toSafeUser(user);
+  }
+
+  /** Checks credentials without ever exposing the stored hash. Returns the user on success. */
+  verifyPassword(email: string, password: string): SafeUser | null {
+    const user = this.findEntityByEmail(email);
+    if (!user || !verifyPasswordHash(password, user.passwordHash)) {
+      return null;
+    }
+    return this.toSafeUser(user);
+  }
+
+  update(id: string, updateUserDto: UpdateUserDto): SafeUser {
+    const user = this.findEntity(id);
+
+    if (updateUserDto.email && updateUserDto.email !== user.email && this.findEntityByEmail(updateUserDto.email)) {
+      throw new ConflictException(`User with email "${updateUserDto.email}" already exists`);
+    }
+
+    const { password, ...fields } = updateUserDto;
+    const updated: User = {
+      ...user,
+      ...fields,
+      ...(password ? { passwordHash: hashPassword(password) } : {}),
+      updatedAt: new Date(),
+    };
+
+    this.users.set(id, updated);
+    return this.toSafeUser(updated);
+  }
+
+  remove(id: string): void {
+    this.findEntity(id);
+    this.users.delete(id);
+  }
+
+  private findEntity(id: string): User {
     const user = this.users.get(id);
     if (!user) {
       throw new NotFoundException(`User with id "${id}" not found`);
@@ -39,29 +83,12 @@ export class UsersService {
     return user;
   }
 
-  findByEmail(email: string): User | undefined {
+  private findEntityByEmail(email: string): User | undefined {
     return [...this.users.values()].find((user) => user.email === email);
   }
 
-  update(id: string, updateUserDto: UpdateUserDto): User {
-    const user = this.findOne(id);
-
-    if (updateUserDto.email && updateUserDto.email !== user.email && this.findByEmail(updateUserDto.email)) {
-      throw new ConflictException(`User with email "${updateUserDto.email}" already exists`);
-    }
-
-    const updated: User = {
-      ...user,
-      ...updateUserDto,
-      updatedAt: new Date(),
-    };
-
-    this.users.set(id, updated);
-    return updated;
-  }
-
-  remove(id: string): void {
-    this.findOne(id);
-    this.users.delete(id);
+  private toSafeUser(user: User): SafeUser {
+    const { passwordHash: _passwordHash, ...safeUser } = user;
+    return safeUser;
   }
 }
