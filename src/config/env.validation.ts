@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min, validateSync } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, Matches, Max, Min, validateSync } from 'class-validator';
 
 export enum NodeEnv {
   Development = 'development',
@@ -30,6 +30,9 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsEnum(LogLevel)
   LOG_LEVEL?: LogLevel;
+
+  @Matches(/^mongodb(\+srv)?:\/\/./, { message: 'MONGODB_URI must be a mongodb:// or mongodb+srv:// connection string' })
+  MONGODB_URI!: string;
 }
 
 /** Fails fast at startup: an invalid or malformed variable aborts the boot with a readable message. */

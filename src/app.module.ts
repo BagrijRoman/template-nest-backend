@@ -1,13 +1,36 @@
 import { randomUUID } from 'node:crypto';
-import { Module, ValidationPipe } from '@nestjs/common';
+import { Logger, Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { MongooseModule } from '@nestjs/mongoose';
+import { Connection, STATES } from 'mongoose';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
 import { LogLevel, NodeEnv, validateEnv } from './config/env.validation.js';
 import { UsersModule } from './users/users.module.js';
+
+const MONGODB_SERVER_SELECTION_TIMEOUT_MS = 5000;
+const MONGODB_RETRY_ATTEMPTS = 3;
+const MONGODB_RETRY_DELAY_MS = 1000;
+
+/** Logs connection lifecycle; the initial state is logged explicitly because 'connected' fires before the factory runs. */
+function attachMongoConnectionLogging(connection: Connection): Connection {
+  const logger = new Logger('MongoDB');
+
+  connection.on('disconnected', () => logger.warn('MongoDB connection lost'));
+  connection.on('reconnected', () => logger.log('MongoDB connection restored'));
+  connection.on('error', (error: Error) => logger.error(`MongoDB connection error: ${error.message}`));
+
+  if (connection.readyState === STATES.connected) {
+    logger.log(`Connected to MongoDB (database "${connection.name}")`);
+  } else {
+    connection.on('connected', () => logger.log(`Connected to MongoDB (database "${connection.name}")`));
+  }
+
+  return connection;
+}
 
 @Module({
   imports: [
@@ -29,6 +52,16 @@ import { UsersModule } from './users/users.module.js';
           },
         };
       },
+    }),
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        uri: config.getOrThrow<string>('MONGODB_URI'),
+        serverSelectionTimeoutMS: MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+        retryAttempts: MONGODB_RETRY_ATTEMPTS,
+        retryDelay: MONGODB_RETRY_DELAY_MS,
+        connectionFactory: attachMongoConnectionLogging,
+      }),
     }),
     UsersModule,
   ],
