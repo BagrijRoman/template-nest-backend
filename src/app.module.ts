@@ -7,6 +7,7 @@ import { Connection, STATES } from 'mongoose';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AuthModule } from './auth/auth.module.js';
 import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
 import { LogLevel, NodeEnv, validateEnv } from './config/env.validation.js';
 import { UsersModule } from './users/users.module.js';
@@ -63,6 +64,7 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
         connectionFactory: attachMongoConnectionLogging,
       }),
     }),
+    AuthModule,
     UsersModule,
   ],
   controllers: [AppController],
