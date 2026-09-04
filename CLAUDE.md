@@ -33,7 +33,7 @@ These rules are binding for any assistant or contributor working in this repo.
 
 ## Error handling
 
-- All client-facing errors are normalized by `AllExceptionsFilter` (`src/common/filters/all-exceptions.filter.ts`) to the `ErrorResponseBody` shape: `{ statusCode, error, message, details?, timestamp, path }`. Do not invent other error shapes.
+- All client-facing errors are normalized by `AllExceptionsFilter` (`src/common/filters/allExceptions.filter.ts`) to the `ErrorResponseBody` shape: `{ statusCode, error, message, details?, timestamp, path }`. Do not invent other error shapes.
 - Throw built-in `HttpException` subclasses (`NotFoundException`, `ConflictException`, …) with human-readable messages, pattern: `User with id "..." not found`.
 - Unexpected errors are logged with a full stack server-side and returned to the client as a generic 500 — never leak stack traces, database queries, or internals.
 - Never swallow errors: handle them meaningfully or let them propagate to the filter.
@@ -68,7 +68,44 @@ These rules are binding for any assistant or contributor working in this repo.
 
 - `strict` mode; `any` is forbidden — use `unknown` plus narrowing when truly needed.
 - Prettier and oxlint must pass cleanly; run them before finishing any task.
-- Follow the naming already in the codebase: `kebab-case` filenames with role suffixes (`users.service.ts`, `create-user.dto.ts`), classes `PascalCase`, DTOs end in `Dto`.
+- Filenames are `camelCase` with role suffixes: `users.service.ts`, `createUser.dto.ts`, `allExceptions.filter.ts`. Test suffixes stay as-is (`.spec.ts`, `.e2e-spec.ts` — the Vitest configs match on them). Nest CLI generators emit `kebab-case` — rename generated files (and their imports) to camelCase.
+- Classes are `PascalCase`; DTOs end in `Dto`.
+
+## Code quality principles
+
+**Functions**
+
+- A function does one thing; if its name needs an "and", split it.
+- Guard clauses and early returns over nested `if`s (see `UsersService.findEntity` for the house style).
+- No boolean flag parameters that switch behavior (`doStuff(true)`) — write two explicitly named functions.
+
+**Naming**
+
+- Intention-revealing names: `remainingAttempts`, not `n`; no abbreviations like `usr` or `res2`.
+- Booleans read as predicates: `is`/`has`/`can`/`should` prefix.
+- One concept = one word across the codebase — don't mix `fetch`/`get`/`retrieve` for the same operation.
+
+**Async**
+
+- No floating promises: every promise is `await`ed or explicitly returned.
+- Independent async operations run through `Promise.all`, not sequential `await`s.
+- No async work in constructors; don't mark a function `async` unless it awaits something.
+
+**Simplicity (YAGNI)**
+
+- No speculative abstractions "for later" — duplication is acceptable until the third repeat (rule of three), then extract.
+- No dead code and no commented-out code — git history remembers.
+- No magic numbers or strings — named constants (see `KEY_LENGTH` in `password.util.ts`).
+
+**Immutability**
+
+- `const` by default, `readonly` for class fields, never mutate function parameters.
+- Dates are handled in UTC and serialized as ISO 8601.
+
+**Comments**
+
+- A comment explains *why*, not *what* — the code already says what it does.
+- JSDoc only for non-obvious public utilities (see `password.util.ts`).
 
 ## Standard choices (fixed decisions for future additions)
 
@@ -85,4 +122,5 @@ When the corresponding capability is added to a project built on this template, 
 - Do not add dependencies without explicit approval.
 - Work in small increments; after any code change run `npm run lint` and `npm test` (plus `npm run test:e2e` when routes/filters/pipes changed) and report the results honestly.
 - Leave changes uncommitted for review. Commit only when explicitly asked.
+- Commit messages follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:` + an imperative English description (e.g. `feat: add user registration endpoint`).
 - Keep this file in sync: if a rule here diverges from reality (e.g. ValidationPipe options change), update this file in the same change.
