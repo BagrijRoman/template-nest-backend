@@ -73,6 +73,10 @@ These rules are binding for any assistant or contributor working in this repo.
 - Prettier and oxlint must pass cleanly; run them before finishing any task.
 - Filenames are `camelCase` with role suffixes: `users.service.ts`, `createUser.dto.ts`, `allExceptions.filter.ts`. Test suffixes stay as-is (`.spec.ts`, `.e2e-spec.ts` — the Vitest configs match on them). Nest CLI generators emit `kebab-case` — rename generated files (and their imports) to camelCase.
 - Classes are `PascalCase`; DTOs end in `Dto`.
+- Prefer arrow functions (`const fn = () => {}`) over `function` declarations for standalone helpers and callbacks; Nest classes and their methods are the framework idiom and stay as-is.
+- Prefer `const` over `let` wherever the binding is never reassigned; `var` is forbidden.
+- Export through named `const` exports; no default exports or imports, except where a tool requires a default (e.g. `vitest.config.ts`).
+- Where a folder groups related units (e.g. a module's `dto/`, `entities/`), re-export them through a shared `index.ts` so consumers import from the folder, where this doesn't create circular imports.
 
 ## Code quality principles
 
