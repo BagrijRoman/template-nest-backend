@@ -74,7 +74,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 
 ## Testing
 
-- Unit tests live next to sources (`*.spec.ts`), e2e tests in `test/*.e2e-spec.ts` using supertest against a real Nest app instance.
+- Unit tests live next to sources (`*.spec.ts`), e2e tests in `test/<domain>/*.e2e-spec.ts` (one folder per domain, e.g. `test/auth/`) using supertest against a real Nest app instance. Split large suites into focused files — one endpoint or flow per file (e.g. `test/auth/signUp.e2e-spec.ts`).
 - Test behavior, not implementation. Names state the expectation: `should return 404 when user not found`.
 - Every new feature or bug fix ships with a test. A bug fix starts with a failing test that reproduces it.
 - Mock dependencies in unit tests via Nest's `Test.createTestingModule` with provider overrides.
