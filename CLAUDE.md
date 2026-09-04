@@ -27,7 +27,16 @@ A husky + lint-staged pre-commit hook (`.husky/pre-commit`, activated by the `pr
 - REST conventions: plural nouns (`/users`), standard verbs and status codes — 201 for create, 204 for delete, 404 via `NotFoundException`, 409 via `ConflictException`.
 - Every list endpoint is paginated with `limit`/`offset` query params and returns an envelope: `{ data, total, limit, offset }`. Never return unbounded arrays.
 - Never return an entity directly. Services return safe/response shapes (see `SafeUser` in `src/users/entities/user.entity.ts`) — sensitive fields like `passwordHash` must never leave the service layer.
-- Every endpoint and DTO carries `@nestjs/swagger` decorators (`@ApiOperation`, `@ApiCreatedResponse`, `@ApiProperty`, …); Swagger UI is served at `/docs` outside production (see `main.ts`).
+- Every endpoint and DTO carries `@nestjs/swagger` decorators (`@ApiOperation`, `@ApiCreatedResponse`, `@ApiProperty`, …); see the API documentation section below.
+
+## API documentation (Swagger)
+
+Swagger is mandatory: the API documents itself automatically via `@nestjs/swagger`, and that stays true for every change.
+
+- The Swagger setup in `main.ts` (UI at `/docs`, served outside production) must stay wired; never remove or disable it.
+- No endpoint ships undocumented: every controller method carries `@ApiOperation` plus the response decorators for each status it can return (`@ApiCreatedResponse`, `@ApiNotFoundResponse`, `@ApiConflictResponse`, …), and every DTO property carries `@ApiProperty`/`@ApiPropertyOptional` with formats and examples where they help.
+- Documentation is generated from code, not written by hand — decorators live next to the endpoints and DTOs they describe, so the docs cannot drift; when an endpoint's behavior changes (status codes, response shape, params), its decorators are updated in the same change.
+- Error responses follow the shared `ErrorResponseBody` shape — document error statuses against it, don't invent per-endpoint error schemas.
 
 ## Validation
 
@@ -128,7 +137,7 @@ A husky + lint-staged pre-commit hook (`.husky/pre-commit`, activated by the `pr
 When the corresponding capability is added to a project built on this template, use these — do not re-litigate:
 
 - **Database**: MongoDB + Mongoose via `@nestjs/mongoose` — schema classes with `@Schema`/`@Prop`, models injected with `@InjectModel`, connection through `MongooseModule.forRootAsync` reading `MONGODB_URI`. Mongoose documents never leave the service layer: use `.lean()` for reads and map to safe/response shapes; API responses expose `id` as a string, never raw `_id`/ObjectId. Declare indexes in schemas; apply indexes, data transformations, and seeds through `migrate-mongo` migrations — never by hand against a shared database.
-- **Auth**: JWT with a short-lived access token + refresh token flow, implemented via `@nestjs/passport` guards. Refresh tokens are stored server-side hashed, so they can be rotated and revoked.
+- **Auth**: JWT with a short-lived access token + refresh token flow, implemented with `@nestjs/jwt` and hand-written Nest guards — no passport (`@nestjs/passport` and passport strategies must not be added). Refresh tokens are stored server-side hashed, so they can be rotated and revoked. The `AuthModule` endpoints (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`) are scaffolded and return 501 until this flow is implemented.
 
 ## Assistant workflow rules
 
