@@ -9,6 +9,8 @@ These rules are binding for any assistant or contributor working in this repo.
 - `npm run lint` — oxlint over `src/` and `test/`
 - `npm run format` — Prettier write
 - `npm run format:check` — Prettier check (no writes)
+
+A husky + lint-staged pre-commit hook (`.husky/pre-commit`, activated by the `prepare` script on `npm install`) must stay set up: it runs lint-staged over the staged `src/`/`test/` TypeScript files — oxlint blocks the commit on errors, Prettier auto-formats and re-stages. Never bypass it with `--no-verify`; fix the reported problems instead.
 - `npm test` — unit tests (Vitest)
 - `npm run test:e2e` — e2e tests (Vitest + supertest, `vitest.config.e2e.ts`)
 
@@ -71,7 +73,7 @@ These rules are binding for any assistant or contributor working in this repo.
 ## TypeScript & code style
 
 - `strict` mode; `any` is forbidden — use `unknown` plus narrowing when truly needed.
-- A linter and Prettier are mandatory tooling: oxlint (`oxlint.json`) and Prettier (`.prettierrc`) stay installed and configured, and the lint config enforces the style rules below (`func-style`, `prefer-const`, `no-var`, `import/no-default-export`, `no-explicit-any`). Both must pass cleanly; run them before finishing any task.
+- A linter and Prettier are mandatory tooling: oxlint (`.oxlintrc.json`) and Prettier (`.prettierrc`) stay installed and configured, and the lint config enforces the style rules below (`func-style`, `prefer-const`, `no-var`, `import/no-default-export`, `no-explicit-any`). Both must pass cleanly; run them before finishing any task.
 - Filenames are `camelCase` with role suffixes: `users.service.ts`, `createUser.dto.ts`, `allExceptions.filter.ts`. Test suffixes stay as-is (`.spec.ts`, `.e2e-spec.ts` — the Vitest configs match on them). Nest CLI generators emit `kebab-case` — rename generated files (and their imports) to camelCase.
 - Classes are `PascalCase`; DTOs end in `Dto`.
 - Prefer arrow functions (`const fn = () => {}`) over `function` declarations for standalone helpers and callbacks; Nest classes and their methods are the framework idiom and stay as-is.
