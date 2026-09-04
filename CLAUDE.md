@@ -35,7 +35,7 @@ These rules are binding for any assistant or contributor working in this repo.
 
 - All client-facing errors are normalized by `AllExceptionsFilter` (`src/common/filters/all-exceptions.filter.ts`) to the `ErrorResponseBody` shape: `{ statusCode, error, message, details?, timestamp, path }`. Do not invent other error shapes.
 - Throw built-in `HttpException` subclasses (`NotFoundException`, `ConflictException`, …) with human-readable messages, pattern: `User with id "..." not found`.
-- Unexpected errors are logged with a full stack server-side and returned to the client as a generic 500 — never leak stack traces, SQL, or internals.
+- Unexpected errors are logged with a full stack server-side and returned to the client as a generic 500 — never leak stack traces, database queries, or internals.
 - Never swallow errors: handle them meaningfully or let them propagate to the filter.
 
 ## Configuration & secrets
@@ -54,7 +54,8 @@ These rules are binding for any assistant or contributor working in this repo.
 
 - Use the Nest `Logger` class scoped to the current class (`new Logger(MyService.name)`). Never `console.log`.
 - Never log passwords, tokens, or personal data.
-- For production-grade projects built from this template, adopt `nestjs-pino` (structured JSON logs + request id per request).
+- `nestjs-pino` is wired in `AppModule` (`LoggerModule.forRoot`): structured JSON logs, a request id per request (`x-request-id` header or a generated UUID), `authorization`/`cookie` headers redacted, pretty single-line output in dev, `silent` in tests. `main.ts` routes Nest's logging through it via `app.useLogger(app.get(Logger))` with `bufferLogs: true`.
+- Log level comes from `LOG_LEVEL` (see `.env.example`); default `info`.
 
 ## Testing
 
@@ -73,10 +74,9 @@ These rules are binding for any assistant or contributor working in this repo.
 
 When the corresponding capability is added to a project built on this template, use these — do not re-litigate:
 
-- **Database**: PostgreSQL + Prisma. Schema changes only via migrations (`prisma migrate`); no manual DDL. Multi-step writes are wrapped in transactions. Services depend on a repository/Prisma service, never raw SQL in controllers.
+- **Database**: MongoDB + Mongoose via `@nestjs/mongoose` — schema classes with `@Schema`/`@Prop`, models injected with `@InjectModel`, connection through `MongooseModule.forRootAsync` reading `MONGODB_URI`. Mongoose documents never leave the service layer: use `.lean()` for reads and map to safe/response shapes; API responses expose `id` as a string, never raw `_id`/ObjectId. Declare indexes in schemas; apply indexes, data transformations, and seeds through `migrate-mongo` migrations — never by hand against a shared database.
 - **API docs**: `@nestjs/swagger` — every endpoint and DTO gets decorators; docs served at `/docs` in non-production.
-- **Auth**: JWT access tokens via `@nestjs/passport` guards; refresh flow decided per project.
-- **Logging**: `nestjs-pino`.
+- **Auth**: JWT with a short-lived access token + refresh token flow, implemented via `@nestjs/passport` guards. Refresh tokens are stored server-side hashed, so they can be rotated and revoked.
 - **Config**: `@nestjs/config` with env schema validation.
 
 ## Assistant workflow rules
