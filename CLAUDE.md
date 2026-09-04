@@ -41,9 +41,11 @@ These rules are binding for any assistant or contributor working in this repo.
 
 ## Configuration & secrets
 
-- All runtime configuration comes from environment variables. No secrets, tokens, or connection strings in code or in git.
-- Configuration is provided by `@nestjs/config` (global) with the env schema validated in `src/config/env.validation.ts` — the app fails fast on startup if a variable is invalid. Read config via `ConfigService`, never `process.env` directly; new variables get added to the schema and to `.env.example`.
-- Keep `.env.example` up to date; real `.env` stays gitignored.
+- All runtime configuration comes from environment variables.
+- Every sensitive value — API keys, database credentials, JWT secrets, third-party tokens, connection strings — lives ONLY in environment variables: never in code, committed files, or logs.
+- Every environment variable is declared in the schema in `src/config/env.validation.ts` and checked and validated at startup: the app fails fast (refuses to boot) when a required variable is missing or a value is malformed. Secrets get no defaults — they are declared required, so a missing secret can never boot the app into a broken state.
+- Configuration is provided by `@nestjs/config` (global). Read config via `ConfigService`, never `process.env` directly; every new variable gets added to the schema and to `.env.example`.
+- Keep `.env.example` up to date (placeholders for secrets, never real values); real `.env` stays gitignored.
 
 ## Security
 
@@ -96,7 +98,13 @@ These rules are binding for any assistant or contributor working in this repo.
 
 - No speculative abstractions "for later" — duplication is acceptable until the third repeat (rule of three), then extract.
 - No dead code and no commented-out code — git history remembers.
-- No magic numbers or strings — named constants (see `KEY_LENGTH` in `password.util.ts`).
+
+**Constants**
+
+- No magic numbers or strings — every meaningful literal gets a named constant.
+- A value reused within one file is extracted to a `const` at the top of that file (see `KEY_LENGTH` and `SALT_LENGTH` in `password.util.ts`).
+- A value reused across modules goes to global constants in `src/common/constants.ts` (create the file when the first shared constant appears) — the same literal must never be duplicated in two files.
+- A value reused within one module (but not beyond it) goes to a `<module>.constants.ts` file inside that module.
 
 **Immutability**
 
