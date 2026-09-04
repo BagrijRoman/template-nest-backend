@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
@@ -7,6 +7,8 @@ import { hashPassword, verifyPasswordHash } from './password.util.js';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   // In-memory storage; swap for a real database repository later.
   private readonly users = new Map<string, User>();
 
@@ -26,6 +28,7 @@ export class UsersService {
     };
 
     this.users.set(user.id, user);
+    this.logger.log(`User created: ${user.id}`);
     return this.toSafeUser(user);
   }
 
