@@ -1,8 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/crates/oxc_linter/src/rules.rs",
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
   "rules": {
-    "@typescript-eslint/no-explicit-any": "off",
-    "@typescript-eslint/no-floating-promises": "warn"
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-floating-promises": "warn",
+    "func-style": ["error", "expression"],
+    "prefer-const": "error",
+    "no-var": "error",
+    "import/no-default-export": "error"
   },
   "env": {
     "node": true
