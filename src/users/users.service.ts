@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { CreateUserDto } from './dto/create-user.dto.js';
-import { UpdateUserDto } from './dto/update-user.dto.js';
+import { CreateUserDto } from './dto/createUser.dto.js';
+import { UpdateUserDto } from './dto/updateUser.dto.js';
 import { SafeUser, User } from './entities/user.entity.js';
 import { hashPassword, verifyPasswordHash } from './password.util.js';
 

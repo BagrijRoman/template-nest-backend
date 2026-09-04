@@ -4,7 +4,7 @@ import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
