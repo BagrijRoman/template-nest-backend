@@ -1,5 +1,9 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Matches, Max, Min, validateSync } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, Matches, Max, Min, MinLength, validateSync } from 'class-validator';
+
+const JWT_SECRET_MIN_LENGTH = 32;
+const TTL_PATTERN = /^\d+(ms|s|m|h|d)$/;
+const TTL_MESSAGE = 'must be a duration with a unit, e.g. "900s", "15m", "12h" or "30d"';
 
 export enum NodeEnv {
   Development = 'development',
@@ -35,6 +39,22 @@ export class EnvironmentVariables {
     message: 'MONGODB_URI must be a mongodb:// or mongodb+srv:// connection string',
   })
   MONGODB_URI!: string;
+
+  @MinLength(JWT_SECRET_MIN_LENGTH, {
+    message: `JWT_ACCESS_SECRET must be a string of at least ${JWT_SECRET_MIN_LENGTH} characters`,
+  })
+  JWT_ACCESS_SECRET!: string;
+
+  @Matches(TTL_PATTERN, { message: `JWT_ACCESS_TTL ${TTL_MESSAGE}` })
+  JWT_ACCESS_TTL!: string;
+
+  @MinLength(JWT_SECRET_MIN_LENGTH, {
+    message: `JWT_REFRESH_SECRET must be a string of at least ${JWT_SECRET_MIN_LENGTH} characters`,
+  })
+  JWT_REFRESH_SECRET!: string;
+
+  @Matches(TTL_PATTERN, { message: `JWT_REFRESH_TTL ${TTL_MESSAGE}` })
+  JWT_REFRESH_TTL!: string;
 }
 
 /** Fails fast at startup: an invalid or malformed variable aborts the boot with a readable message. */
