@@ -1,8 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiBadRequestResponse, ApiConflictResponse, ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { CreateUserDto } from './dto/createUser.dto.js';
-import { UserResponseDto } from './dto/userResponse.dto.js';
-import type { SafeUser } from './entities/user.entity.js';
+import { CreateUserDto, UserResponseDto } from './dto/index.js';
+import type { SafeUser } from './entities/index.js';
 import { UsersService } from './users.service.js';
 
 @ApiTags('users')

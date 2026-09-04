@@ -31,12 +31,14 @@ export class EnvironmentVariables {
   @IsEnum(LogLevel)
   LOG_LEVEL?: LogLevel;
 
-  @Matches(/^mongodb(\+srv)?:\/\/./, { message: 'MONGODB_URI must be a mongodb:// or mongodb+srv:// connection string' })
+  @Matches(/^mongodb(\+srv)?:\/\/./, {
+    message: 'MONGODB_URI must be a mongodb:// or mongodb+srv:// connection string',
+  })
   MONGODB_URI!: string;
 }
 
 /** Fails fast at startup: an invalid or malformed variable aborts the boot with a readable message. */
-export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
+export const validateEnv = (config: Record<string, unknown>): EnvironmentVariables => {
   const validated = plainToInstance(EnvironmentVariables, config, { enableImplicitConversion: true });
   const errors = validateSync(validated, { skipMissingProperties: false });
 
@@ -46,4 +48,4 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
   }
 
   return validated;
-}
+};

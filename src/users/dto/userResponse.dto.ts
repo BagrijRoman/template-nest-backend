@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { SafeUser } from '../entities/user.entity.js';
+import type { SafeUser } from '../entities/index.js';
 
 export class UserResponseDto implements SafeUser {
   @ApiProperty({ format: 'uuid' })

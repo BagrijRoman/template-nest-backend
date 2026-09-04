@@ -16,7 +16,7 @@ const MONGODB_RETRY_ATTEMPTS = 3;
 const MONGODB_RETRY_DELAY_MS = 1000;
 
 /** Logs connection lifecycle; the initial state is logged explicitly because 'connected' fires before the factory runs. */
-function attachMongoConnectionLogging(connection: Connection): Connection {
+const attachMongoConnectionLogging = (connection: Connection): Connection => {
   const logger = new Logger('MongoDB');
 
   connection.on('disconnected', () => logger.warn('MongoDB connection lost'));
@@ -30,7 +30,7 @@ function attachMongoConnectionLogging(connection: Connection): Connection {
   }
 
   return connection;
-}
+};
 
 @Module({
   imports: [
