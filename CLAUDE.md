@@ -24,6 +24,7 @@ These rules are binding for any assistant or contributor working in this repo.
 - REST conventions: plural nouns (`/users`), standard verbs and status codes — 201 for create, 204 for delete, 404 via `NotFoundException`, 409 via `ConflictException`.
 - Every list endpoint is paginated with `limit`/`offset` query params and returns an envelope: `{ data, total, limit, offset }`. Never return unbounded arrays.
 - Never return an entity directly. Services return safe/response shapes (see `SafeUser` in `src/users/entities/user.entity.ts`) — sensitive fields like `passwordHash` must never leave the service layer.
+- Every endpoint and DTO carries `@nestjs/swagger` decorators (`@ApiOperation`, `@ApiCreatedResponse`, `@ApiProperty`, …); Swagger UI is served at `/docs` outside production (see `main.ts`).
 
 ## Validation
 
@@ -41,7 +42,7 @@ These rules are binding for any assistant or contributor working in this repo.
 ## Configuration & secrets
 
 - All runtime configuration comes from environment variables. No secrets, tokens, or connection strings in code or in git.
-- When configuration grows beyond `PORT`, adopt `@nestjs/config` with a validated env schema — the app must fail fast on startup if a required variable is missing.
+- Configuration is provided by `@nestjs/config` (global) with the env schema validated in `src/config/env.validation.ts` — the app fails fast on startup if a variable is invalid. Read config via `ConfigService`, never `process.env` directly; new variables get added to the schema and to `.env.example`.
 - Keep `.env.example` up to date; real `.env` stays gitignored.
 
 ## Security
@@ -54,7 +55,7 @@ These rules are binding for any assistant or contributor working in this repo.
 
 - Use the Nest `Logger` class scoped to the current class (`new Logger(MyService.name)`). Never `console.log`.
 - Never log passwords, tokens, or personal data.
-- `nestjs-pino` is wired in `AppModule` (`LoggerModule.forRoot`): structured JSON logs, a request id per request (`x-request-id` header or a generated UUID), `authorization`/`cookie` headers redacted, pretty single-line output in dev, `silent` in tests. `main.ts` routes Nest's logging through it via `app.useLogger(app.get(Logger))` with `bufferLogs: true`.
+- `nestjs-pino` is wired in `AppModule` (`LoggerModule.forRootAsync`, configured from `ConfigService`): structured JSON logs, a request id per request (`x-request-id` header or a generated UUID), `authorization`/`cookie` headers redacted, pretty single-line output in dev, `silent` in tests. `main.ts` routes Nest's logging through it via `app.useLogger(app.get(Logger))` with `bufferLogs: true`.
 - Log level comes from `LOG_LEVEL` (see `.env.example`); default `info`.
 
 ## Testing
@@ -112,9 +113,7 @@ These rules are binding for any assistant or contributor working in this repo.
 When the corresponding capability is added to a project built on this template, use these — do not re-litigate:
 
 - **Database**: MongoDB + Mongoose via `@nestjs/mongoose` — schema classes with `@Schema`/`@Prop`, models injected with `@InjectModel`, connection through `MongooseModule.forRootAsync` reading `MONGODB_URI`. Mongoose documents never leave the service layer: use `.lean()` for reads and map to safe/response shapes; API responses expose `id` as a string, never raw `_id`/ObjectId. Declare indexes in schemas; apply indexes, data transformations, and seeds through `migrate-mongo` migrations — never by hand against a shared database.
-- **API docs**: `@nestjs/swagger` — every endpoint and DTO gets decorators; docs served at `/docs` in non-production.
 - **Auth**: JWT with a short-lived access token + refresh token flow, implemented via `@nestjs/passport` guards. Refresh tokens are stored server-side hashed, so they can be rotated and revoked.
-- **Config**: `@nestjs/config` with env schema validation.
 
 ## Assistant workflow rules
 

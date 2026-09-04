@@ -1,9 +1,10 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const KEY_LENGTH = 64;
+const SALT_LENGTH = 16;
 
 export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString('hex');
+  const salt = randomBytes(SALT_LENGTH).toString('hex');
   const hash = scryptSync(password, salt, KEY_LENGTH).toString('hex');
   return `${salt}:${hash}`;
 }
