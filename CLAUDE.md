@@ -63,7 +63,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 
 - Passwords are hashed with the existing scrypt helpers in `src/users/password.util.ts` (salted, `timingSafeEqual` comparison). Never store or log plaintext passwords; never roll new crypto.
 - Authorization defaults to closed: once auth exists, guards protect everything and public routes are explicitly marked (e.g. a `@Public()` decorator).
-- When exposing the API publicly, add `helmet`, a CORS origin whitelist, and `@nestjs/throttler` rate limiting on auth endpoints.
+- `helmet` is wired as global middleware in `AppModule.configure` (CSP enabled only in production — the default policy breaks Swagger UI, which is served outside production anyway); never remove it. When exposing the API publicly, also add a CORS origin whitelist and `@nestjs/throttler` rate limiting on auth endpoints.
 
 ## Logging
 

@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { Logger, Module, ValidationPipe } from '@nestjs/common';
+import { Logger, MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
+import helmet from 'helmet';
 import { Connection, STATES } from 'mongoose';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
@@ -82,4 +83,13 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  constructor(private readonly config: ConfigService) {}
+
+  configure(consumer: MiddlewareConsumer): void {
+    const nodeEnv = this.config.getOrThrow<NodeEnv>('NODE_ENV');
+
+    // CSP only in production: outside it Swagger UI is served at /docs and the default policy breaks its assets.
+    consumer.apply(helmet({ contentSecurityPolicy: nodeEnv === NodeEnv.Production })).forRoutes('{*splat}');
+  }
+}

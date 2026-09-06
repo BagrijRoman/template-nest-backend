@@ -1,6 +1,9 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
-import { Connection, STATES } from 'mongoose';
+import { STATES } from 'mongoose';
+// Type-only: with emitDecoratorMetadata a value import would survive into dist, and mongoose's CJS wrapper
+// exposes no `Connection` named export at runtime. DI resolves via the @InjectConnection token instead.
+import type { Connection } from 'mongoose';
 import { HealthResponseDto } from './dto/index.js';
 
 @Injectable()

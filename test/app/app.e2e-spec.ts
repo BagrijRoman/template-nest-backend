@@ -23,6 +23,15 @@ describe('AppController (e2e)', () => {
       .expect('Hello World!');
   });
 
+  it('sets security headers and hides the framework signature', async () => {
+    const response = await request(app.getHttpServer()).get('/').expect(200);
+
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['x-frame-options']).toBeDefined();
+    expect(response.headers['strict-transport-security']).toBeDefined();
+    expect(response.headers['x-powered-by']).toBeUndefined();
+  });
+
   afterEach(async () => {
     await app.close();
   });
