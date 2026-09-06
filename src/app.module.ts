@@ -9,6 +9,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
+import { HealthModule } from './health/health.module.js';
 import { LogLevel, NodeEnv, validateEnv } from './config/env.validation.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -65,6 +66,7 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
       }),
     }),
     AuthModule,
+    HealthModule,
     UsersModule,
   ],
   controllers: [AppController],
