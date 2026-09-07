@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { Logger, MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import helmet from 'helmet';
 import { Connection, STATES } from 'mongoose';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { BURST_THROTTLE_LIMIT, BURST_THROTTLE_TTL_MS, THROTTLE_LIMIT, THROTTLE_TTL_MS } from './common/constants.js';
 import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
 import { HealthModule } from './health/health.module.js';
 import { LogLevel, NodeEnv, validateEnv } from './config/env.validation.js';
@@ -66,6 +68,12 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
         connectionFactory: attachMongoConnectionLogging,
       }),
     }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        { ttl: THROTTLE_TTL_MS, limit: THROTTLE_LIMIT },
+        { name: 'burst', ttl: BURST_THROTTLE_TTL_MS, limit: BURST_THROTTLE_LIMIT },
+      ],
+    }),
     AuthModule,
     HealthModule,
     UsersModule,
@@ -80,6 +88,10 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

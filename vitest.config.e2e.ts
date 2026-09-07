@@ -7,5 +7,8 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
+    setupFiles: ['./test/setup/mongoMemoryServer.ts'],
+    // The first run downloads the mongod binary; starting an instance also takes a moment.
+    hookTimeout: 120_000,
   },
 });

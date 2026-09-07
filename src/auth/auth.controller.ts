@@ -8,13 +8,18 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { UserResponseDto } from '../users/dto/index.js';
 import type { SafeUser } from '../users/entities/index.js';
+import { AUTH_THROTTLE_LIMIT, AUTH_THROTTLE_TTL_MS } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
 import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
 
 @ApiTags('auth')
+@Throttle({ default: { ttl: AUTH_THROTTLE_TTL_MS, limit: AUTH_THROTTLE_LIMIT } })
+@ApiTooManyRequestsResponse({ description: 'Rate limit exceeded' })
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
