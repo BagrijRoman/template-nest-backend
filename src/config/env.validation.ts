@@ -55,6 +55,13 @@ export class EnvironmentVariables {
 
   @Matches(TTL_PATTERN, { message: `JWT_REFRESH_TTL ${TTL_MESSAGE}` })
   JWT_REFRESH_TTL!: string;
+
+  // Unset = CORS stays disabled; never use a wildcard origin on an API with credentials.
+  @IsOptional()
+  @Matches(/^https?:\/\/[^\s,]+(,\s*https?:\/\/[^\s,]+)*$/, {
+    message: 'CORS_ORIGINS must be a comma-separated list of http(s) origins',
+  })
+  CORS_ORIGINS?: string;
 }
 
 /** Fails fast at startup: an invalid or malformed variable aborts the boot with a readable message. */

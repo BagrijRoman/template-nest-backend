@@ -63,7 +63,8 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 
 - Passwords are hashed with the existing scrypt helpers in `src/users/password.util.ts` (salted, `timingSafeEqual` comparison). Never store or log plaintext passwords; never roll new crypto.
 - Authorization defaults to closed: once auth exists, guards protect everything and public routes are explicitly marked (e.g. a `@Public()` decorator).
-- `helmet` is wired as global middleware in `AppModule.configure` (CSP enabled only in production — the default policy breaks Swagger UI, which is served outside production anyway); never remove it. When exposing the API publicly, also add a CORS origin whitelist.
+- `helmet` is wired as global middleware in `AppModule.configure` (CSP enabled only in production — the default policy breaks Swagger UI, which is served outside production anyway); never remove it.
+- CORS is whitelist-only: origins come from the validated `CORS_ORIGINS` env var (comma-separated, parsed by `src/config/corsOrigins.util.ts`, enabled in `main.ts` with credentials); unset means CORS stays disabled. Never enable a wildcard origin.
 - Rate limiting is global via `@nestjs/throttler` (`ThrottlerGuard` as `APP_GUARD`) with two per-IP windows (`src/common/constants.ts`): a sustained per-minute limit plus a short burst window that cuts request floods off within a second; `/auth/*` carries a stricter profile (`auth.constants.ts`), `@SkipThrottle()` on `/health` (probes must never be limited); never remove the guard. App-level throttling only blunts basic floods — real DDoS protection belongs upstream (CDN/WAF). Note: `package.json` `overrides` relaxes throttler's peer range to Nest 12 — drop that override once `@nestjs/throttler` officially supports Nest 12. Behind a reverse proxy, enable Express `trust proxy` so limits apply to the client IP, not the proxy's.
 
 ## Logging
