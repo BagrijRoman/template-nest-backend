@@ -11,6 +11,10 @@ Starter template for backend projects.
 3. Set up `.env` (DB connection, ports, secrets).
 4. Replace this README with the project's own.
 
+## Security
+
+The security posture — everything implemented from the development standpoint and what is planned next — is described in [SECURITY.md](SECURITY.md).
+
 ## Health check
 
 `GET /health` reports service liveness and MongoDB connectivity — point load balancer, container orchestrator, or uptime monitor probes at it.
