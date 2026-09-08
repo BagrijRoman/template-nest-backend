@@ -28,6 +28,10 @@ Security posture of this backend from the development standpoint: what is implem
 - Passwords are hashed with **async scrypt** (libuv thread pool — the sync variant would block the event loop and act as a DoS amplifier), salted per hash, compared with `timingSafeEqual`. The hash never leaves the service layer and never reaches API responses or logs.
 - All configuration comes from env vars validated at startup (fail fast): secrets are required, have no defaults, need 32+ characters, and `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET` must differ. Real values live only in the gitignored `.env`.
 
+### Tokens
+
+- All JWT signing/verification is centralized in `TokensService` (`src/auth/tokens.service.ts`, `@nestjs/jwt`): access and refresh tokens use distinct secrets, so one kind never passes verification where the other is expected; payloads carry only `sub` (+ `jti` on refresh tokens) — a JWT is encoded, not encrypted, so nothing sensitive goes in. Invalid/expired/forged tokens all collapse into the same `null` (→ generic 401), leaking nothing about why verification failed. The endpoints wiring this into sign-in/refresh/logout land next.
+
 ### Error handling & logging
 
 - Every client-facing error is normalized by `AllExceptionsFilter`: no stack traces, queries or internals ever reach the client; unexpected errors become a generic 500 and are logged server-side in full. 4xx errors thrown by Express middleware (e.g. the 413) are translated honestly instead of collapsing into 500.
