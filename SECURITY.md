@@ -49,6 +49,26 @@ Security posture of this backend from the development standpoint: what is implem
 
 All of the above is covered by tests (unit + e2e against an isolated in-memory MongoDB), including: injection payloads answered with 400, `$`-operator filters neutralized below the DTO layer, 413/429 responses, CORS allowed/blocked origins, security headers, no password material in responses or the database in plaintext, and no internals leaking through error responses.
 
+## How refresh tokens and rotation work
+
+The session model is a short-lived stateless access token plus a long-lived, server-tracked refresh token. This section explains the mechanism end to end; the enforcement details live in the Tokens section above. (Status: issuance and the store are live; the `/auth/refresh` and `/auth/logout` endpoints are the next milestone.)
+
+**Why two tokens.** The access token (TTL `JWT_ACCESS_TTL`, default 15m) authenticates every API request by signature alone — no database lookup, and therefore no way to revoke it early; its only protection is dying fast. The refresh token (TTL `JWT_REFRESH_TTL`, default 30d) exists solely to mint the next pair, is presented only to `/auth/refresh`/`/auth/logout`, and **is** revocable, because redeeming it requires a matching server-side record.
+
+**Issuance** (sign-up / sign-in). `TokensService` signs a pair with distinct secrets; the refresh token carries a random `jti`, so two tokens for the same user never collide. `RefreshTokensService.persist` stores `{ sha256(token), userId, expiresAt }` — the raw token exists only in the response to the client; `expiresAt` mirrors the token's own `exp`, and a TTL index purges dead records.
+
+**Rotation** (`/auth/refresh`). The client trades its refresh token for a fresh pair:
+
+1. Verify the JWT signature and expiry (invalid → generic 401).
+2. `consume`: atomically find-and-delete the record by hash (`findOneAndDelete`). No record → the token was already used, revoked, or never real → generic 401.
+3. Issue and persist a new pair; the old refresh token is now dead.
+
+Every refresh token is therefore **single-use**: rotation is not an extra feature bolted on, it falls out of step 2 — redeeming a token destroys it. The atomic delete also means two concurrent requests presenting the same token cannot both win; the loser gets the same generic 401 as any invalid token.
+
+**What rotation buys.** A stolen refresh token no longer grants a quiet 30-day session. Either the thief uses it first — and the legitimate client's next refresh fails, forcibly surfacing the compromise as a logout — or the victim's client rotates first and the stolen token is already dead. Reuse detection (backlog) strengthens this further: a consumed hash showing up again is proof of theft, and the whole token family gets revoked.
+
+**Logout.** The same `consume`, minus the new pair: the presented token's record is deleted, so it can never be redeemed again. The short-lived access token is left to expire on its own — that is the accepted cost of keeping access checks stateless, bounded by `JWT_ACCESS_TTL`.
+
 ## Planned
 
 Deferred deliberately — rules already exist in `CLAUDE.md` and apply when the corresponding work happens:
