@@ -7,6 +7,10 @@ import { JwtService } from '@nestjs/jwt';
 export type AccessTokenPayload = { sub: string };
 export type RefreshTokenPayload = { sub: string; jti: string };
 
+// Verification also yields `exp` (seconds since epoch, added by the JWT library at signing);
+// the refresh-token store mirrors it into its TTL so records die together with their tokens.
+export type VerifiedRefreshTokenPayload = RefreshTokenPayload & { exp: number };
+
 export type TokenPair = { accessToken: string; refreshToken: string };
 
 @Injectable()
@@ -44,8 +48,8 @@ export class TokensService {
   }
 
   /** Returns the payload of a valid, unexpired refresh token; null for anything else (tampered, expired, wrong kind). */
-  verifyRefreshToken(token: string): Promise<RefreshTokenPayload | null> {
-    return this.verify<RefreshTokenPayload>(token, this.refreshSecret);
+  verifyRefreshToken(token: string): Promise<VerifiedRefreshTokenPayload | null> {
+    return this.verify<VerifiedRefreshTokenPayload>(token, this.refreshSecret);
   }
 
   private async verify<T extends object>(token: string, secret: string): Promise<T | null> {

@@ -31,6 +31,7 @@ Security posture of this backend from the development standpoint: what is implem
 ### Tokens
 
 - All JWT signing/verification is centralized in `TokensService` (`src/auth/tokens.service.ts`, `@nestjs/jwt`): access and refresh tokens use distinct secrets, so one kind never passes verification where the other is expected; payloads carry only `sub` (+ `jti` on refresh tokens) — a JWT is encoded, not encrypted, so nothing sensitive goes in. Invalid/expired/forged tokens all collapse into the same `null` (→ generic 401), leaking nothing about why verification failed. The endpoints wiring this into sign-in/refresh/logout land next.
+- Refresh tokens are stored server-side **only as sha256 hashes** (`src/auth/refreshTokens.service.ts`, MongoDB collection with a unique index on the hash): a database leak exposes nothing replayable. Deterministic sha256 (not scrypt) is deliberate — the token embeds a 256-bit HMAC signature, so preimage resistance suffices, and hash lookup requires determinism. A record's presence is what makes a token redeemable: `consume` verifies and atomically deletes it (`findOneAndDelete`), so a token can never be redeemed twice even under concurrent requests — rotation and revocation both build on this. A TTL index on `expiresAt` (mirrored from the token's `exp` claim) auto-purges dead records.
 
 ### Error handling & logging
 
