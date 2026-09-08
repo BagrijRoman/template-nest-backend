@@ -15,7 +15,7 @@ const bootstrap = async () => {
   const config = app.get(ConfigService);
 
   if (config.getOrThrow<NodeEnv>('NODE_ENV') !== NodeEnv.Production) {
-    const docConfig = new DocumentBuilder().setTitle('Template Backend').setVersion('0.0.1').build();
+    const docConfig = new DocumentBuilder().setTitle('Template Backend').setVersion('0.0.1').addBearerAuth().build();
     SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, docConfig));
   }
 

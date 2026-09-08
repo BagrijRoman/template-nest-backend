@@ -12,11 +12,14 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { Public } from '../common/decorators/public.decorator.js';
 import { AUTH_THROTTLE_LIMIT, AUTH_THROTTLE_TTL_MS } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
 import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
 
 @ApiTags('auth')
+// These are the routes that hand out tokens — they cannot demand one.
+@Public()
 @Throttle({ default: { ttl: AUTH_THROTTLE_TTL_MS, limit: AUTH_THROTTLE_LIMIT } })
 @ApiTooManyRequestsResponse({ description: 'Rate limit exceeded' })
 @ApiPayloadTooLargeResponse({ description: 'Request body exceeds the size limit' })

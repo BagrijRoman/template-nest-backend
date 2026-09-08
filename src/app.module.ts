@@ -12,6 +12,7 @@ import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { BURST_THROTTLE_LIMIT, BURST_THROTTLE_TTL_MS, THROTTLE_LIMIT, THROTTLE_TTL_MS } from './common/constants.js';
 import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
+import { JwtAuthGuard } from './common/guards/jwtAuth.guard.js';
 import { HealthModule } from './health/health.module.js';
 import { LogLevel, NodeEnv, validateEnv } from './config/env.validation.js';
 import { UsersModule } from './users/users.module.js';
@@ -97,6 +98,11 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // After the throttler: unauthenticated floods must burn the rate limit before touching auth.
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
     },
   ],
 })
