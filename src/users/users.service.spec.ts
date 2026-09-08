@@ -2,19 +2,24 @@ import { ConflictException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { User } from './entities/index.js';
 import { hashPassword, verifyPasswordHash } from './password.util.js';
 import { UsersService } from './users.service.js';
 
 const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
 
+let storedPasswordHash: string;
+beforeAll(async () => {
+  storedPasswordHash = await hashPassword('secret123');
+});
+
 const leanUser = (overrides: Record<string, unknown> = {}) => ({
   _id: new Types.ObjectId(),
   email: 'jane@example.com',
   firstName: 'Jane',
   lastName: 'Doe',
-  passwordHash: hashPassword('secret123'),
+  passwordHash: storedPasswordHash,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -69,7 +74,7 @@ describe('UsersService', () => {
 
     const persisted = userModel.create.mock.calls[0][0];
     expect(persisted.password).toBeUndefined();
-    expect(verifyPasswordHash('secret123', persisted.passwordHash)).toBe(true);
+    expect(await verifyPasswordHash('secret123', persisted.passwordHash)).toBe(true);
   });
 
   it('rejects an email that is already in use without attempting the insert', async () => {

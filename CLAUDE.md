@@ -61,7 +61,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 
 ## Security
 
-- Passwords are hashed with the existing scrypt helpers in `src/users/password.util.ts` (salted, `timingSafeEqual` comparison). Never store or log plaintext passwords; never roll new crypto.
+- Passwords are hashed with the existing scrypt helpers in `src/users/password.util.ts` (salted, `timingSafeEqual` comparison, async scrypt — the sync variant blocks the event loop on every request and is a DoS amplification vector, never reintroduce it). Never store or log plaintext passwords; never roll new crypto.
 - Authorization defaults to closed: once auth exists, guards protect everything and public routes are explicitly marked (e.g. a `@Public()` decorator).
 - `helmet` is wired as global middleware in `AppModule.configure` (CSP enabled only in production — the default policy breaks Swagger UI, which is served outside production anyway); never remove it.
 - CORS is whitelist-only: origins come from the validated `CORS_ORIGINS` env var (comma-separated, parsed by `src/config/corsOrigins.util.ts`, enabled with credentials in `setupApp`); unset means CORS stays disabled. Never enable a wildcard origin.

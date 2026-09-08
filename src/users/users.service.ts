@@ -32,7 +32,7 @@ export class UsersService {
         email: createUserDto.email,
         firstName: createUserDto.firstName,
         lastName: createUserDto.lastName,
-        passwordHash: hashPassword(createUserDto.password),
+        passwordHash: await hashPassword(createUserDto.password),
       });
       this.logger.log(`User created: ${created.id}`);
       return this.toSafeUser(created.toObject());
@@ -47,7 +47,7 @@ export class UsersService {
   /** Checks credentials without ever exposing the stored hash. Returns the user on success. */
   async verifyPassword(email: string, password: string): Promise<SafeUser | null> {
     const user = await this.userModel.findOne({ email }).lean();
-    if (!user || !verifyPasswordHash(password, user.passwordHash)) {
+    if (!user || !(await verifyPasswordHash(password, user.passwordHash))) {
       return null;
     }
     return this.toSafeUser(user);
