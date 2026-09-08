@@ -5,7 +5,7 @@ import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import helmet from 'helmet';
-import { Connection, STATES } from 'mongoose';
+import mongoose, { Connection, STATES } from 'mongoose';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -19,6 +19,11 @@ import { UsersModule } from './users/users.module.js';
 const MONGODB_SERVER_SELECTION_TIMEOUT_MS = 5000;
 const MONGODB_RETRY_ATTEMPTS = 3;
 const MONGODB_RETRY_DELAY_MS = 1000;
+
+// Defense in depth against NoSQL operator injection: $-operators in filter values are
+// neutralized even if a raw object ever slips past DTO validation. Only the global
+// setting works — mongoose silently ignores `sanitizeFilter` in connection options.
+mongoose.set('sanitizeFilter', true);
 
 /** Logs connection lifecycle; the initial state is logged explicitly because 'connected' fires before the factory runs. */
 const attachMongoConnectionLogging = (connection: Connection): Connection => {
