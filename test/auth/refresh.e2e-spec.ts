@@ -58,13 +58,40 @@ describe('POST /auth/refresh (e2e)', () => {
     expect(JSON.stringify(response.body)).not.toContain('assword');
   });
 
-  it('rotates: the redeemed token is dead, the fresh one keeps working', async () => {
+  it('rotates: each fresh token keeps working while the chain is used correctly', async () => {
+    const firstResponse = await refresh({ refreshToken }).expect(200);
+    const secondResponse = await refresh({
+      refreshToken: firstResponse.body.refreshToken,
+    }).expect(200);
+
+    expect(secondResponse.body.refreshToken).not.toBe(
+      firstResponse.body.refreshToken,
+    );
+  });
+
+  it('detects reuse: a consumed token revokes its whole family, fresh token included', async () => {
     const firstResponse = await refresh({ refreshToken }).expect(200);
 
+    // Replaying the consumed token is proof of theft…
     await refresh({ refreshToken }).expect(401);
+    // …so the not-yet-used token of the same family is dead too.
     await refresh({ refreshToken: firstResponse.body.refreshToken }).expect(
-      200,
+      401,
     );
+  });
+
+  it('keeps other device sessions alive when one family is revoked', async () => {
+    const otherDevice = await request(app.getHttpServer())
+      .post('/auth/sign-in')
+      .send({ email, password: 'Secret123' })
+      .expect(200);
+
+    // Trigger reuse revocation in the sign-up family.
+    await refresh({ refreshToken }).expect(200);
+    await refresh({ refreshToken }).expect(401);
+
+    // The other device's family is untouched.
+    await refresh({ refreshToken: otherDevice.body.refreshToken }).expect(200);
   });
 
   it('answers every unredeemable token with the same generic 401', async () => {
@@ -83,12 +110,13 @@ describe('POST /auth/refresh (e2e)', () => {
     );
   });
 
-  it('replaces the stored hash on rotation instead of accumulating records', async () => {
+  it('marks the redeemed record consumed and stores the successor in the same family', async () => {
     const before = await connection
       .collection('refreshtokens')
       .find({ userId })
       .toArray();
     expect(before).toHaveLength(1);
+    expect(before[0].consumedAt).toBeNull();
 
     await refresh({ refreshToken }).expect(200);
 
@@ -96,8 +124,12 @@ describe('POST /auth/refresh (e2e)', () => {
       .collection('refreshtokens')
       .find({ userId })
       .toArray();
-    expect(after).toHaveLength(1);
-    expect(after[0].tokenHash).not.toBe(before[0].tokenHash);
+    expect(after).toHaveLength(2);
+    const consumed = after.find((record) => record.consumedAt !== null);
+    const live = after.find((record) => record.consumedAt === null);
+    expect(consumed?.tokenHash).toBe(before[0].tokenHash);
+    expect(live?.tokenHash).not.toBe(before[0].tokenHash);
+    expect(live?.familyId).toBe(before[0].familyId);
   });
 
   it('lets only one of two concurrent redemptions of the same token win', async () => {

@@ -16,6 +16,7 @@ const USER = {
 };
 
 const TOKEN_PAIR = { accessToken: 'access.token.jwt', refreshToken: 'refresh.token.jwt' };
+const FAMILY_ID = 'e2a4b9a2-1c3d-4e5f-8a7b-9c0d1e2f3a4b';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -53,17 +54,28 @@ describe('AuthService', () => {
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(tokensService.issueTokenPair).toHaveBeenCalledWith(USER.id);
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken);
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, expect.any(String));
   });
 
-  it('signs in with valid credentials and starts a session', async () => {
+  it('signs in with valid credentials and starts a session in a fresh token family', async () => {
     usersService.verifyPassword.mockResolvedValue(USER);
 
     const response = await service.signIn({ email: USER.email, password: 'Secret123' });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(usersService.verifyPassword).toHaveBeenCalledWith(USER.email, 'Secret123');
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken);
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, expect.any(String));
+  });
+
+  it('starts a distinct token family for every sign-in', async () => {
+    usersService.verifyPassword.mockResolvedValue(USER);
+
+    await service.signIn({ email: USER.email, password: 'Secret123' });
+    await service.signIn({ email: USER.email, password: 'Secret123' });
+
+    const [, firstFamily] = refreshTokensService.persist.mock.calls[0];
+    const [, secondFamily] = refreshTokensService.persist.mock.calls[1];
+    expect(firstFamily).not.toBe(secondFamily);
   });
 
   it('rejects bad credentials with a generic 401 and issues no tokens', async () => {
@@ -76,15 +88,15 @@ describe('AuthService', () => {
     expect(refreshTokensService.persist).not.toHaveBeenCalled();
   });
 
-  it('rotates: consumes the presented refresh token and starts a fresh session', async () => {
-    refreshTokensService.consume.mockResolvedValue(USER.id);
+  it('rotates: consumes the presented refresh token and issues the next pair in the same family', async () => {
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
     usersService.findById.mockResolvedValue(USER);
 
     const response = await service.refresh({ refreshToken: 'valid.refresh.jwt' });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(refreshTokensService.consume).toHaveBeenCalledWith('valid.refresh.jwt');
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken);
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, FAMILY_ID);
   });
 
   it('rejects a refresh token that cannot be consumed with a generic 401 and issues nothing', async () => {
@@ -97,7 +109,7 @@ describe('AuthService', () => {
   });
 
   it('rejects a refresh token whose account no longer exists with the same generic 401', async () => {
-    refreshTokensService.consume.mockResolvedValue(USER.id);
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
     usersService.findById.mockResolvedValue(null);
 
     await expect(service.refresh({ refreshToken: 'orphaned.refresh.jwt' })).rejects.toThrow(
@@ -107,7 +119,7 @@ describe('AuthService', () => {
   });
 
   it('logs out by consuming the token, and stays idempotent for an unredeemable one', async () => {
-    refreshTokensService.consume.mockResolvedValue(USER.id);
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
     await expect(service.logout({ refreshToken: 'valid.refresh.jwt' })).resolves.toBeUndefined();
 
     refreshTokensService.consume.mockResolvedValue(null);

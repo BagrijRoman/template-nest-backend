@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import type { SafeUser } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
@@ -31,20 +32,20 @@ export class AuthService {
     return this.issueSession(user);
   }
 
-  /** Rotation: redeeming the presented token destroys it, and a fresh pair is issued instead. */
+  /** Rotation: redeeming the presented token destroys it, and a fresh pair is issued in the same family. */
   async refresh(refreshTokenDto: RefreshTokenDto): Promise<AuthResponseDto> {
-    const userId = await this.refreshTokensService.consume(refreshTokenDto.refreshToken);
-    if (!userId) {
+    const consumed = await this.refreshTokensService.consume(refreshTokenDto.refreshToken);
+    if (!consumed) {
       throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
     }
 
-    const user = await this.usersService.findById(userId);
+    const user = await this.usersService.findById(consumed.userId);
     if (!user) {
       // The account is gone; the token has already been consumed, so nothing is left to revoke.
       throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
     }
 
-    return this.issueSession(user);
+    return this.issueSession(user, consumed.familyId);
   }
 
   /**
@@ -56,10 +57,13 @@ export class AuthService {
     await this.refreshTokensService.consume(refreshTokenDto.refreshToken);
   }
 
-  /** Issues a token pair and persists the refresh token so it can be redeemed (and revoked) later. */
-  private async issueSession(user: SafeUser): Promise<AuthResponseDto> {
+  /**
+   * Issues a token pair and persists the refresh token so it can be redeemed (and revoked) later.
+   * Sign-up/sign-in start a new token family (one per device session); rotation stays in its own.
+   */
+  private async issueSession(user: SafeUser, familyId: string = randomUUID()): Promise<AuthResponseDto> {
     const tokenPair = await this.tokensService.issueTokenPair(user.id);
-    await this.refreshTokensService.persist(tokenPair.refreshToken);
+    await this.refreshTokensService.persist(tokenPair.refreshToken, familyId);
     return { ...tokenPair, user };
   }
 }
