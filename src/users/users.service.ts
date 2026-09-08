@@ -1,9 +1,12 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { BreachedPasswordsService } from './breachedPasswords.service.js';
 import { CreateUserDto } from './dto/index.js';
 import { SafeUser, User } from './entities/index.js';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPasswordHash } from './password.util.js';
+
+const BREACHED_PASSWORD_MESSAGE = 'This password has appeared in a known data breach — please choose a different one';
 
 const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
 
@@ -19,12 +22,19 @@ const duplicateEmailException = (email: string): ConflictException =>
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(@InjectModel(User.name) private readonly userModel: Model<User>) {}
+  constructor(
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+    private readonly breachedPasswordsService: BreachedPasswordsService,
+  ) {}
 
   async create(createUserDto: CreateUserDto): Promise<SafeUser> {
     // Fast application-level check; the unique index stays the race-safe guard (its violation is translated below).
     if (await this.userModel.exists({ email: createUserDto.email })) {
       throw duplicateEmailException(createUserDto.email);
+    }
+
+    if (await this.breachedPasswordsService.isBreached(createUserDto.password)) {
+      throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
     }
 
     try {
@@ -73,6 +83,10 @@ export class UsersService {
     const user = await this.userModel.findById(id).lean();
     if (!user || !(await verifyPasswordHash(currentPassword, user.passwordHash))) {
       return null;
+    }
+
+    if (await this.breachedPasswordsService.isBreached(newPassword)) {
+      throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
     }
 
     const updated = await this.userModel

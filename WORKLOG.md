@@ -35,6 +35,7 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 27 | Backend App: Auth: Refresh token reuse detection | Token families (one per device session); replayed consumed token revokes its family, other sessions untouched |
 | 28 | Backend App: Auth: Per-account sign-in lockout | 5 failed attempts lock the email for a sliding 15-min window (429); unknown emails lock identically (no enumeration oracle); success resets |
 | 29 | Backend App: Auth: Change password | Requires current password; wrong attempts feed the lockout; revokes all sessions (logout everywhere) and returns a fresh one |
+| 30 | Backend App: Breached-password check | haveibeenpwned k-anonymity API on sign-up and password change; fails open; toggle via env |
 
 ## Not implemented (future scope)
 
@@ -43,7 +44,6 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 29 | Backend App: Auth: Forgot password / restore password flow | Requires email service |
 | 30 | Backend App: Auth: Email verification flow | Requires email service; token issuance on sign-up must move behind verification |
 | 31 | Backend App: Email service setup | Provider account needed (e.g. Twilio SendGrid); templates estimated separately |
-| 32 | Backend App: Breached-password check on sign-up | haveibeenpwned k-anonymity API |
 | 33 | Backend App: Security audit log | Auth events with IP/request id; basis for 401/429 spike alerting |
 | 34 | Backend App: User roles setup | Needed once admin web app starts |
 | 35 | Backend App: User profile CRUD | PATCH /users/me, delete account |

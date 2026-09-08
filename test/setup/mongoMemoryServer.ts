@@ -7,6 +7,9 @@ import { afterAll } from 'vitest';
 // is imported, so the URI must be in process.env before the test file loads.
 const mongoServer = await MongoMemoryServer.create();
 process.env.MONGODB_URI = mongoServer.getUri();
+// E2e tests must never call the external haveibeenpwned API; its wiring is covered by a
+// dedicated spec that overrides the provider instead.
+process.env.BREACHED_PASSWORD_CHECK = 'disabled';
 
 afterAll(async () => {
   await mongoServer.stop();

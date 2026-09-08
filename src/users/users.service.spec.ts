@@ -1,8 +1,9 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BreachedPasswordsService } from './breachedPasswords.service.js';
 import { User } from './entities/index.js';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPasswordHash } from './password.util.js';
 import { UsersService } from './users.service.js';
@@ -45,15 +46,22 @@ describe('UsersService', () => {
     findOne: vi.fn(),
   };
 
+  const breachedPasswordsService = { isBreached: vi.fn() };
+
   beforeEach(async () => {
     vi.resetAllMocks();
     // resetAllMocks also wipes the module spy's pass-through implementation — restore it.
     const original = await vi.importActual<typeof import('./password.util.js')>('./password.util.js');
     vi.mocked(verifyPasswordHash).mockImplementation(original.verifyPasswordHash);
     userModel.exists.mockResolvedValue(null);
+    breachedPasswordsService.isBreached.mockResolvedValue(false);
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [UsersService, { provide: getModelToken(User.name), useValue: userModel }],
+      providers: [
+        UsersService,
+        { provide: getModelToken(User.name), useValue: userModel },
+        { provide: BreachedPasswordsService, useValue: breachedPasswordsService },
+      ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
@@ -132,6 +140,26 @@ describe('UsersService', () => {
 
     expect(await service.findById('not-an-object-id')).toBeNull();
     expect(userModel.findById).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a breached password at sign-up before creating anything', async () => {
+    breachedPasswordsService.isBreached.mockResolvedValue(true);
+
+    await expect(
+      service.create({ email: 'jane@example.com', firstName: 'Jane', lastName: 'Doe', password: 'secret123' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(userModel.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a breached new password on password change without writing', async () => {
+    const doc = leanUser();
+    userModel.findById.mockReturnValue(withLean(doc));
+    breachedPasswordsService.isBreached.mockResolvedValue(true);
+
+    await expect(service.updatePassword(doc._id.toString(), 'secret123', 'Breached123')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(userModel.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 
   it('updates the password after verifying the current one, storing a new hash', async () => {

@@ -11,6 +11,11 @@ export enum NodeEnv {
   Test = 'test',
 }
 
+export enum ToggleValue {
+  Enabled = 'enabled',
+  Disabled = 'disabled',
+}
+
 export enum LogLevel {
   Trace = 'trace',
   Debug = 'debug',
@@ -55,6 +60,12 @@ export class EnvironmentVariables {
 
   @Matches(TTL_PATTERN, { message: `JWT_REFRESH_TTL ${TTL_MESSAGE}` })
   JWT_REFRESH_TTL!: string;
+
+  // Checks new passwords against haveibeenpwned (k-anonymity). Enabled by default; e2e tests
+  // disable it so they never call the external API.
+  @IsOptional()
+  @IsEnum(ToggleValue)
+  BREACHED_PASSWORD_CHECK?: ToggleValue;
 
   // Unset = CORS stays disabled; never use a wildcard origin on an API with credentials.
   @IsOptional()
