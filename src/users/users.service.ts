@@ -44,6 +44,15 @@ export class UsersService {
     }
   }
 
+  async findById(id: string): Promise<SafeUser | null> {
+    // An invalid ObjectId would make Mongoose throw a CastError — treat it as "not found" instead.
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+    const user = await this.userModel.findById(id).lean();
+    return user ? this.toSafeUser(user) : null;
+  }
+
   /** Checks credentials without ever exposing the stored hash. Returns the user on success. */
   async verifyPassword(email: string, password: string): Promise<SafeUser | null> {
     const user = await this.userModel.findOne({ email }).lean();

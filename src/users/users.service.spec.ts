@@ -40,6 +40,7 @@ describe('UsersService', () => {
   const userModel = {
     create: vi.fn(),
     exists: vi.fn(),
+    findById: vi.fn(),
     findOne: vi.fn(),
   };
 
@@ -112,6 +113,24 @@ describe('UsersService', () => {
 
     userModel.findOne.mockImplementation(() => withLean(null));
     expect(await service.verifyPassword('missing@example.com', 'secret123')).toBeNull();
+  });
+
+  it('finds a user by id and returns the safe shape', async () => {
+    const doc = leanUser();
+    userModel.findById.mockReturnValue(withLean(doc));
+
+    const user = await service.findById(doc._id.toString());
+
+    expect(user?.id).toBe(doc._id.toString());
+    expect(user).not.toHaveProperty('passwordHash');
+  });
+
+  it('returns null for a missing id and for a malformed id without querying', async () => {
+    userModel.findById.mockReturnValue(withLean(null));
+    expect(await service.findById(new Types.ObjectId().toString())).toBeNull();
+
+    expect(await service.findById('not-an-object-id')).toBeNull();
+    expect(userModel.findById).toHaveBeenCalledTimes(1);
   });
 
   it('runs a dummy hash verification for unknown emails so timing does not reveal account existence', async () => {

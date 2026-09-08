@@ -4,7 +4,6 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
-  ApiNotImplementedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiPayloadTooLargeResponse,
@@ -49,18 +48,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Exchange a refresh token for a new token pair' })
   @ApiOkResponse({ type: AuthResponseDto })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiNotImplementedResponse({ description: 'Not implemented yet' })
-  refresh(@Body() refreshTokenDto: RefreshTokenDto): AuthResponseDto {
+  @ApiUnauthorizedResponse({ description: 'Invalid refresh token' })
+  refresh(@Body() refreshTokenDto: RefreshTokenDto): Promise<AuthResponseDto> {
     return this.authService.refresh(refreshTokenDto);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Revoke a refresh token' })
-  @ApiNoContentResponse({ description: 'Refresh token revoked' })
+  @ApiNoContentResponse({ description: 'Logged out (idempotent — an already-revoked token gets the same answer)' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiNotImplementedResponse({ description: 'Not implemented yet' })
-  logout(@Body() refreshTokenDto: RefreshTokenDto): void {
-    this.authService.logout(refreshTokenDto);
+  logout(@Body() refreshTokenDto: RefreshTokenDto): Promise<void> {
+    return this.authService.logout(refreshTokenDto);
   }
 }
