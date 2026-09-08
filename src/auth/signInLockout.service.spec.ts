@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_FAILED_SIGN_IN_ATTEMPTS } from './auth.constants.js';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { SignInAttempt } from './entities/index.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 
@@ -15,6 +16,7 @@ const withLean = <T>(value: T) => ({ lean: () => Promise.resolve(value) });
 describe('SignInLockoutService', () => {
   let service: SignInLockoutService;
 
+  const securityEvents = { record: vi.fn() };
   const signInAttemptModel = {
     deleteOne: vi.fn(),
     findOne: vi.fn(),
@@ -27,7 +29,11 @@ describe('SignInLockoutService', () => {
     signInAttemptModel.findOneAndUpdate.mockResolvedValue({ failedCount: 1 });
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SignInLockoutService, { provide: getModelToken(SignInAttempt.name), useValue: signInAttemptModel }],
+      providers: [
+        SignInLockoutService,
+        { provide: getModelToken(SignInAttempt.name), useValue: signInAttemptModel },
+        { provide: SecurityEventsService, useValue: securityEvents },
+      ],
     }).compile();
 
     service = module.get<SignInLockoutService>(SignInLockoutService);
@@ -72,6 +78,14 @@ describe('SignInLockoutService', () => {
     expect(options).toMatchObject({ upsert: true });
     // Stale (expired but unpurged) counters are dropped first so they cannot leak into a new window.
     expect(signInAttemptModel.deleteOne.mock.calls[0][0]).toMatchObject({ email: EMAIL });
+  });
+
+  it('records a security event exactly when the failure that locks the email lands', async () => {
+    signInAttemptModel.findOneAndUpdate.mockResolvedValue({ failedCount: MAX_FAILED_SIGN_IN_ATTEMPTS });
+
+    await service.recordFailure(EMAIL);
+
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.SignInLocked, { email: EMAIL });
   });
 
   it('resets the counter after a successful sign-in', async () => {

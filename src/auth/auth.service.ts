@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/
 import type { SafeUser } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthResponseDto, ChangePasswordDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
@@ -19,10 +20,12 @@ export class AuthService {
     private readonly tokensService: TokensService,
     private readonly refreshTokensService: RefreshTokensService,
     private readonly signInLockoutService: SignInLockoutService,
+    private readonly securityEvents: SecurityEventsService,
   ) {}
 
   async signUp(signUpDto: SignUpDto): Promise<AuthResponseDto> {
     const user = await this.usersService.create(signUpDto);
+    this.securityEvents.record(SecurityEvent.UserSignedUp, { userId: user.id });
     return this.issueSession(user);
   }
 
@@ -32,10 +35,12 @@ export class AuthService {
     const user = await this.usersService.verifyPassword(signInDto.email, signInDto.password);
     if (!user) {
       await this.signInLockoutService.recordFailure(signInDto.email);
+      this.securityEvents.record(SecurityEvent.SignInFailed, { email: signInDto.email });
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
 
     await this.signInLockoutService.reset(signInDto.email);
+    this.securityEvents.record(SecurityEvent.SignInSucceeded, { userId: user.id });
     return this.issueSession(user);
   }
 
@@ -52,6 +57,7 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
     }
 
+    this.securityEvents.record(SecurityEvent.TokenRefreshed, { userId: user.id, familyId: consumed.familyId });
     return this.issueSession(user, consumed.familyId);
   }
 
@@ -61,7 +67,10 @@ export class AuthService {
    * they could use (redeeming happens only through refresh, which does answer 401).
    */
   async logout(refreshTokenDto: RefreshTokenDto): Promise<void> {
-    await this.refreshTokensService.consume(refreshTokenDto.refreshToken);
+    const consumed = await this.refreshTokensService.consume(refreshTokenDto.refreshToken);
+    if (consumed) {
+      this.securityEvents.record(SecurityEvent.LoggedOut, { userId: consumed.userId, familyId: consumed.familyId });
+    }
   }
 
   /**
@@ -85,12 +94,14 @@ export class AuthService {
     );
     if (!updated) {
       await this.signInLockoutService.recordFailure(user.email);
+      this.securityEvents.record(SecurityEvent.PasswordChangeRejected, { userId });
       // 400, not 401: a 401 would make clients treat the access token as dead and force a logout.
       throw new BadRequestException('Current password is incorrect');
     }
 
     await this.signInLockoutService.reset(user.email);
     await this.refreshTokensService.revokeAllForUser(userId);
+    this.securityEvents.record(SecurityEvent.PasswordChanged, { userId });
     return this.issueSession(updated);
   }
 

@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { RefreshToken } from './entities/index.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { TokensService } from './tokens.service.js';
@@ -33,6 +34,8 @@ describe('RefreshTokensService', () => {
     findOneAndUpdate: vi.fn(),
   };
 
+  const securityEvents = { record: vi.fn() };
+
   beforeEach(async () => {
     vi.resetAllMocks();
     refreshTokenModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
@@ -44,6 +47,7 @@ describe('RefreshTokensService', () => {
         { provide: JwtService, useValue: new JwtService({}) },
         { provide: ConfigService, useValue: { getOrThrow: (key: string) => envMock[key] } },
         { provide: getModelToken(RefreshToken.name), useValue: refreshTokenModel },
+        { provide: SecurityEventsService, useValue: securityEvents },
       ],
     }).compile();
 
@@ -102,6 +106,10 @@ describe('RefreshTokensService', () => {
 
     expect(await service.consume(refreshToken)).toBeNull();
     expect(refreshTokenModel.deleteMany).toHaveBeenCalledWith({ familyId: FAMILY_ID });
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.RefreshTokenReuseDetected, {
+      userId: USER_ID,
+      familyId: FAMILY_ID,
+    });
   });
 
   it('returns null for an unknown token without revoking anything', async () => {

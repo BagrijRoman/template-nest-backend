@@ -1,6 +1,7 @@
-import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, trusted } from 'mongoose';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { MAX_FAILED_SIGN_IN_ATTEMPTS, SIGN_IN_LOCKOUT_WINDOW_MS } from './auth.constants.js';
 import { SignInAttempt } from './entities/index.js';
 
@@ -13,9 +14,10 @@ const LOCKED_MESSAGE = 'Too many failed sign-in attempts, try again later';
  */
 @Injectable()
 export class SignInLockoutService {
-  private readonly logger = new Logger(SignInLockoutService.name);
-
-  constructor(@InjectModel(SignInAttempt.name) private readonly signInAttemptModel: Model<SignInAttempt>) {}
+  constructor(
+    @InjectModel(SignInAttempt.name) private readonly signInAttemptModel: Model<SignInAttempt>,
+    private readonly securityEvents: SecurityEventsService,
+  ) {}
 
   /** Rejects with 429 while the email is locked; the window slides with every failed attempt. */
   async assertNotLocked(email: string): Promise<void> {
@@ -39,7 +41,7 @@ export class SignInLockoutService {
       { upsert: true, new: true },
     );
     if (attempt.failedCount === MAX_FAILED_SIGN_IN_ATTEMPTS) {
-      this.logger.warn(`Sign-in locked for ${SIGN_IN_LOCKOUT_WINDOW_MS / 1000}s after repeated failures`);
+      this.securityEvents.record(SecurityEvent.SignInLocked, { email });
     }
   }
 

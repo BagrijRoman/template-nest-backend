@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { BreachedPasswordsService } from './breachedPasswords.service.js';
 import { User } from './entities/index.js';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPasswordHash } from './password.util.js';
@@ -47,6 +48,7 @@ describe('UsersService', () => {
   };
 
   const breachedPasswordsService = { isBreached: vi.fn() };
+  const securityEvents = { record: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -61,6 +63,7 @@ describe('UsersService', () => {
         UsersService,
         { provide: getModelToken(User.name), useValue: userModel },
         { provide: BreachedPasswordsService, useValue: breachedPasswordsService },
+        { provide: SecurityEventsService, useValue: securityEvents },
       ],
     }).compile();
 

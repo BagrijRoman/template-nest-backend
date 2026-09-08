@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { RefreshToken } from './entities/index.js';
 import { TokensService } from './tokens.service.js';
 
@@ -15,11 +16,10 @@ export type ConsumedRefreshToken = { userId: string; familyId: string };
 
 @Injectable()
 export class RefreshTokensService {
-  private readonly logger = new Logger(RefreshTokensService.name);
-
   constructor(
     @InjectModel(RefreshToken.name) private readonly refreshTokenModel: Model<RefreshToken>,
     private readonly tokensService: TokensService,
+    private readonly securityEvents: SecurityEventsService,
   ) {}
 
   /** Stores a just-issued refresh token, hashed, inside the given family; the record expires with the token. */
@@ -64,9 +64,10 @@ export class RefreshTokensService {
 
     const reusedRecord = await this.refreshTokenModel.findOne({ tokenHash }).lean();
     if (reusedRecord) {
-      this.logger.warn(
-        `Refresh token reuse detected for user ${reusedRecord.userId} — revoking token family ${reusedRecord.familyId}`,
-      );
+      this.securityEvents.record(SecurityEvent.RefreshTokenReuseDetected, {
+        userId: reusedRecord.userId,
+        familyId: reusedRecord.familyId,
+      });
       await this.revokeFamily(reusedRecord.familyId);
     }
     return null;

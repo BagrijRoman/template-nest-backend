@@ -79,6 +79,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 - Never log passwords, tokens, or personal data.
 - `nestjs-pino` is wired in `AppModule` (`LoggerModule.forRootAsync`, configured from `ConfigService`): structured JSON logs, a request id per request (`x-request-id` header or a generated UUID), `authorization`/`cookie` headers redacted, pretty single-line output in dev, `silent` in tests. `main.ts` routes Nest's logging through it via `app.useLogger(app.get(Logger))` with `bufferLogs: true`.
 - Log level comes from `LOG_LEVEL` (see `.env.example`); default `info`.
+- Security-relevant actions are logged ONLY through `SecurityEventsService` (`src/common/securityEvents/`) — one structured event per action with a machine-readable `event` field; never write ad-hoc security log lines in services. Emails go into events raw and are hashed inside the service; never log a plaintext email yourself.
 
 ## Testing
 

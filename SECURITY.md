@@ -44,6 +44,7 @@ Security posture of this backend from the development standpoint: what is implem
 
 - Every client-facing error is normalized by `AllExceptionsFilter`: no stack traces, queries or internals ever reach the client; unexpected errors become a generic 500 and are logged server-side in full. 4xx errors thrown by Express middleware (e.g. the 413) are translated honestly instead of collapsing into 500.
 - Structured logs redact `authorization` and `cookie` headers; passwords, tokens and personal data are never logged. Each request carries a request id.
+- **Security audit events** flow through a single funnel (`src/common/securityEvents/securityEvents.service.ts`): every security-relevant action — sign-up, sign-in success/failure, lockout engaging, token refresh, refresh-token reuse, logout, password change/rejection, breached-password rejection — is one structured log entry with a machine-readable `event` field, correlated to its HTTP request by the request id. Suspicious events (lockout, token reuse, breached password) log at **warn** so alerting can key on the level alone. Emails appear only as truncated sha256 hashes: pseudonymous (no PII in logs) yet stable, so one account's events can be grouped. No ad-hoc security log lines outside the funnel.
 - Swagger UI is served only outside production.
 
 ### Dependencies
@@ -84,7 +85,7 @@ Deferred deliberately — rules already exist in `CLAUDE.md` and apply when the 
 
 Backlog — next level of protection:
 
-- Security event audit log (sign-in/sign-up/refresh/logout with IP and request id) and alerting on 401/429 spikes.
+- Alerting on security-event spikes (the structured `event` field and warn level are the hooks) once log aggregation exists.
 - Production infrastructure: secrets manager instead of `.env`, TLS and a least-privilege MongoDB user, non-root container image.
 - Automated dependency updates (Dependabot/Renovate).
 - 2FA when the product requires it.

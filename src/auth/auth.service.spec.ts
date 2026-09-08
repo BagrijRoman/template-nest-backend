@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
@@ -26,6 +27,7 @@ describe('AuthService', () => {
   const tokensService = { issueTokenPair: vi.fn() };
   const refreshTokensService = { consume: vi.fn(), persist: vi.fn(), revokeAllForUser: vi.fn() };
   const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
+  const securityEvents = { record: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -39,6 +41,7 @@ describe('AuthService', () => {
         { provide: TokensService, useValue: tokensService },
         { provide: RefreshTokensService, useValue: refreshTokensService },
         { provide: SignInLockoutService, useValue: signInLockoutService },
+        { provide: SecurityEventsService, useValue: securityEvents },
       ],
     }).compile();
 
@@ -89,6 +92,7 @@ describe('AuthService', () => {
     );
     expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
     expect(signInLockoutService.reset).not.toHaveBeenCalled();
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.SignInFailed, { email: USER.email });
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
     expect(refreshTokensService.persist).not.toHaveBeenCalled();
   });
@@ -154,6 +158,7 @@ describe('AuthService', () => {
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(usersService.updatePassword).toHaveBeenCalledWith(USER.id, 'OldSecret123', 'NewSecret123');
     expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.PasswordChanged, { userId: USER.id });
     expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
   });
 

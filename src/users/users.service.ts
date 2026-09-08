@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { BreachedPasswordsService } from './breachedPasswords.service.js';
 import { CreateUserDto } from './dto/index.js';
 import { SafeUser, User } from './entities/index.js';
@@ -20,11 +21,10 @@ const duplicateEmailException = (email: string): ConflictException =>
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
-
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly breachedPasswordsService: BreachedPasswordsService,
+    private readonly securityEvents: SecurityEventsService,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<SafeUser> {
@@ -34,6 +34,7 @@ export class UsersService {
     }
 
     if (await this.breachedPasswordsService.isBreached(createUserDto.password)) {
+      this.securityEvents.record(SecurityEvent.BreachedPasswordRejected, { email: createUserDto.email });
       throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
     }
 
@@ -44,7 +45,6 @@ export class UsersService {
         lastName: createUserDto.lastName,
         passwordHash: await hashPassword(createUserDto.password),
       });
-      this.logger.log(`User created: ${created.id}`);
       return this.toSafeUser(created.toObject());
     } catch (error) {
       if (isDuplicateKeyError(error)) {
@@ -86,6 +86,7 @@ export class UsersService {
     }
 
     if (await this.breachedPasswordsService.isBreached(newPassword)) {
+      this.securityEvents.record(SecurityEvent.BreachedPasswordRejected, { userId: id });
       throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
     }
 
