@@ -33,12 +33,12 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 25 | Backend App: Get current user | GET /users/me: reference protected endpoint; deleted account → 401 (forced re-auth) |
 | 26 | Backend App: Security documentation | SECURITY.md: implemented posture, refresh-rotation deep-dive, prioritized backlog |
 | 27 | Backend App: Auth: Refresh token reuse detection | Token families (one per device session); replayed consumed token revokes its family, other sessions untouched |
+| 28 | Backend App: Auth: Per-account sign-in lockout | 5 failed attempts lock the email for a sliding 15-min window (429); unknown emails lock identically (no enumeration oracle); success resets |
 
 ## Not implemented (future scope)
 
 | # | Feature | Notes |
 | --- | --- | --- |
-| 28 | Backend App: Auth: Per-account sign-in lockout | Failed-attempt counters with progressive delays; IP throttling alone is not enough |
 | 29 | Backend App: Auth: Forgot password / restore password flow | Requires email service |
 | 30 | Backend App: Auth: Email verification flow | Requires email service; token issuance on sign-up must move behind verification |
 | 31 | Backend App: Email service setup | Provider account needed (e.g. Twilio SendGrid); templates estimated separately |

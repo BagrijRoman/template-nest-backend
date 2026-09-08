@@ -1,9 +1,10 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { HttpException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
+import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
 
 const USER = {
@@ -24,6 +25,7 @@ describe('AuthService', () => {
   const usersService = { create: vi.fn(), findById: vi.fn(), verifyPassword: vi.fn() };
   const tokensService = { issueTokenPair: vi.fn() };
   const refreshTokensService = { consume: vi.fn(), persist: vi.fn() };
+  const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -36,6 +38,7 @@ describe('AuthService', () => {
         { provide: UsersService, useValue: usersService },
         { provide: TokensService, useValue: tokensService },
         { provide: RefreshTokensService, useValue: refreshTokensService },
+        { provide: SignInLockoutService, useValue: signInLockoutService },
       ],
     }).compile();
 
@@ -78,14 +81,35 @@ describe('AuthService', () => {
     expect(firstFamily).not.toBe(secondFamily);
   });
 
-  it('rejects bad credentials with a generic 401 and issues no tokens', async () => {
+  it('rejects bad credentials with a generic 401, records the failure and issues no tokens', async () => {
     usersService.verifyPassword.mockResolvedValue(null);
 
     await expect(service.signIn({ email: USER.email, password: 'Wrong123' })).rejects.toThrow(
       new UnauthorizedException('Invalid email or password'),
     );
+    expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
+    expect(signInLockoutService.reset).not.toHaveBeenCalled();
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
     expect(refreshTokensService.persist).not.toHaveBeenCalled();
+  });
+
+  it('checks the lockout before verifying credentials and resets it after success', async () => {
+    usersService.verifyPassword.mockResolvedValue(USER);
+
+    await service.signIn({ email: USER.email, password: 'Secret123' });
+
+    expect(signInLockoutService.assertNotLocked).toHaveBeenCalledWith(USER.email);
+    expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
+    expect(signInLockoutService.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('does not verify the password at all while the email is locked', async () => {
+    const locked = new HttpException('Too many failed sign-in attempts, try again later', 429);
+    signInLockoutService.assertNotLocked.mockRejectedValue(locked);
+
+    await expect(service.signIn({ email: USER.email, password: 'Secret123' })).rejects.toThrow(locked);
+    expect(usersService.verifyPassword).not.toHaveBeenCalled();
+    expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
   });
 
   it('rotates: consumes the presented refresh token and issues the next pair in the same family', async () => {

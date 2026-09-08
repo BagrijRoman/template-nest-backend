@@ -4,8 +4,9 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from '../users/users.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
-import { RefreshToken, RefreshTokenSchema } from './entities/index.js';
+import { RefreshToken, RefreshTokenSchema, SignInAttempt, SignInAttemptSchema } from './entities/index.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
+import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
 
 @Module({
@@ -14,10 +15,13 @@ import { TokensService } from './tokens.service.js';
   imports: [
     UsersModule,
     JwtModule.register({}),
-    MongooseModule.forFeature([{ name: RefreshToken.name, schema: RefreshTokenSchema }]),
+    MongooseModule.forFeature([
+      { name: RefreshToken.name, schema: RefreshTokenSchema },
+      { name: SignInAttempt.name, schema: SignInAttemptSchema },
+    ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, RefreshTokensService, TokensService],
+  providers: [AuthService, RefreshTokensService, SignInLockoutService, TokensService],
   exports: [AuthService, TokensService],
 })
 export class AuthModule {}

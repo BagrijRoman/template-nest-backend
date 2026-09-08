@@ -42,6 +42,9 @@ export class AuthController {
   @ApiOkResponse({ type: AuthResponseDto })
   @ApiBadRequestResponse({ description: 'Validation failed' })
   @ApiUnauthorizedResponse({ description: 'Invalid email or password' })
+  @ApiTooManyRequestsResponse({
+    description: 'Rate limit exceeded, or sign-in temporarily locked after repeated failed attempts',
+  })
   signIn(@Body() signInDto: SignInDto): Promise<AuthResponseDto> {
     return this.authService.signIn(signInDto);
   }

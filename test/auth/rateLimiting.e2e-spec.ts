@@ -22,17 +22,21 @@ describe('Auth rate limiting (e2e)', () => {
   });
 
   it(`returns 429 after ${AUTH_THROTTLE_LIMIT} auth requests within the window`, async () => {
-    const signIn = () =>
+    // A distinct email per attempt: the per-IP throttler must trip, not the per-account lockout.
+    const signIn = (attempt: number) =>
       request(app.getHttpServer())
         .post('/auth/sign-in')
-        .send({ email: 'auth.jane@example.com', password: 'Secret123' });
+        .send({
+          email: `ratelimit.${attempt}@example.com`,
+          password: 'Secret123',
+        });
 
-    // The account does not exist — each attempt burns the limit with a generic 401.
+    // The accounts do not exist — each attempt burns the limit with a generic 401.
     for (let attempt = 0; attempt < AUTH_THROTTLE_LIMIT; attempt += 1) {
-      await signIn().expect(401);
+      await signIn(attempt).expect(401);
     }
 
-    const response = await signIn().expect(429);
+    const response = await signIn(AUTH_THROTTLE_LIMIT).expect(429);
 
     expect(response.body).toMatchObject({
       statusCode: 429,

@@ -15,6 +15,7 @@ Security posture of this backend from the development standpoint: what is implem
 - Global per-IP limits via `@nestjs/throttler` in two windows: a sustained per-minute limit plus a short burst window that cuts request floods off within a second (`src/common/constants.ts`).
 - `/auth/*` carries a stricter profile (`src/auth/auth.constants.ts`) against brute force and account spam.
 - `/health` is exempt — probes must never be throttled.
+- **Per-account sign-in lockout** complements the per-IP limits (which cannot stop a distributed guessing attack against one account): after 5 failed sign-ins an email is locked for 15 minutes (429), and every further failure slides the window forward; a successful sign-in wipes the counter. Counters are kept per email **including unknown emails**, so lockout behavior cannot be used to probe account existence. Backed by a TTL-purged MongoDB collection (`src/auth/signInLockout.service.ts`); a lock engaging is logged as a warning.
 - App-level throttling only blunts basic floods; real DDoS protection belongs upstream (CDN/WAF).
 
 ### Input validation & NoSQL injection
@@ -81,7 +82,6 @@ Deferred deliberately — rules already exist in `CLAUDE.md` and apply when the 
 
 Backlog — next level of protection:
 
-- Per-account failed sign-in counters with progressive delays/lockout (IP throttling alone does not stop distributed password guessing against one account).
 - Breached-password checks on sign-up (haveibeenpwned k-anonymity API).
 - Security event audit log (sign-in/sign-up/refresh/logout with IP and request id) and alerting on 401/429 spikes.
 - Production infrastructure: secrets manager instead of `.env`, TLS and a least-privilege MongoDB user, non-root container image.
