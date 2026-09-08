@@ -42,6 +42,16 @@ describe('Request body size limit (e2e)', () => {
     expect(response.body.timestamp).toBeDefined();
   });
 
+  it('rejects an oversized urlencoded body as well', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/sign-up')
+      .type('form')
+      .send(`password=${'A'.repeat(BODY_SIZE_LIMIT_BYTES + 1)}`)
+      .expect(413);
+
+    expect(response.body.statusCode).toBe(413);
+  });
+
   it('serves a normal-sized body through the same parsers', async () => {
     await request(app.getHttpServer())
       .post('/auth/sign-up')
