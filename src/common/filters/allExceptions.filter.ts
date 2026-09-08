@@ -11,6 +11,18 @@ export interface ErrorResponseBody {
   path: string;
 }
 
+interface MiddlewareHttpError {
+  name: string;
+  message: string;
+  status: number;
+}
+
+// Express middleware (e.g. body-parser's 413) throws http-errors, not HttpException; 4xx ones carry safe messages.
+const isClientMiddlewareError = (exception: unknown): exception is MiddlewareHttpError => {
+  const status = (exception as { status?: unknown } | null)?.status;
+  return exception instanceof Error && typeof status === 'number' && status >= 400 && status < 500;
+};
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -46,6 +58,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
           body.message = message ?? exception.message;
         }
       }
+    } else if (isClientMiddlewareError(exception)) {
+      body.statusCode = exception.status;
+      // 'PayloadTooLargeError' -> 'Payload Too Large'
+      body.error = exception.name.replace(/Error$/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
+      body.message = exception.message;
     } else {
       // Unexpected errors: log the full details, never leak them to the client.
       this.logger.error(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception));

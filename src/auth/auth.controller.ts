@@ -7,6 +7,7 @@ import {
   ApiNotImplementedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPayloadTooLargeResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
@@ -20,6 +21,7 @@ import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/in
 @ApiTags('auth')
 @Throttle({ default: { ttl: AUTH_THROTTLE_TTL_MS, limit: AUTH_THROTTLE_LIMIT } })
 @ApiTooManyRequestsResponse({ description: 'Rate limit exceeded' })
+@ApiPayloadTooLargeResponse({ description: 'Request body exceeds the size limit' })
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

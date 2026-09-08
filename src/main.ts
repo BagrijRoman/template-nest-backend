@@ -7,7 +7,8 @@ import { setupApp } from './app.setup.js';
 import { NodeEnv } from './config/env.validation.js';
 
 const bootstrap = async () => {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // bodyParser off: setupApp registers the parsers with an explicit size limit instead.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, bodyParser: false });
   app.useLogger(app.get(Logger));
   setupApp(app);
 
