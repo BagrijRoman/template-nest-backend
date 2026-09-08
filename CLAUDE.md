@@ -64,7 +64,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 - Passwords are hashed with the existing scrypt helpers in `src/users/password.util.ts` (salted, `timingSafeEqual` comparison). Never store or log plaintext passwords; never roll new crypto.
 - Authorization defaults to closed: once auth exists, guards protect everything and public routes are explicitly marked (e.g. a `@Public()` decorator).
 - `helmet` is wired as global middleware in `AppModule.configure` (CSP enabled only in production — the default policy breaks Swagger UI, which is served outside production anyway); never remove it.
-- CORS is whitelist-only: origins come from the validated `CORS_ORIGINS` env var (comma-separated, parsed by `src/config/corsOrigins.util.ts`, enabled in `main.ts` with credentials); unset means CORS stays disabled. Never enable a wildcard origin.
+- CORS is whitelist-only: origins come from the validated `CORS_ORIGINS` env var (comma-separated, parsed by `src/config/corsOrigins.util.ts`, enabled with credentials in `setupApp`); unset means CORS stays disabled. Never enable a wildcard origin.
 - Rate limiting is global via `@nestjs/throttler` (`ThrottlerGuard` as `APP_GUARD`) with two per-IP windows (`src/common/constants.ts`): a sustained per-minute limit plus a short burst window that cuts request floods off within a second; `/auth/*` carries a stricter profile (`auth.constants.ts`), `@SkipThrottle()` on `/health` (probes must never be limited); never remove the guard. App-level throttling only blunts basic floods — real DDoS protection belongs upstream (CDN/WAF). Note: `package.json` `overrides` relaxes throttler's peer range to Nest 12 — drop that override once `@nestjs/throttler` officially supports Nest 12. Behind a reverse proxy, enable Express `trust proxy` so limits apply to the client IP, not the proxy's.
 
 ## Logging
@@ -78,6 +78,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 
 - Unit tests live next to sources (`*.spec.ts`), e2e tests in `test/<domain>/*.e2e-spec.ts` (one folder per domain, e.g. `test/auth/`) using supertest against a real Nest app instance. Split large suites into focused files — one endpoint or flow per file (e.g. `test/auth/signUp.e2e-spec.ts`).
 - E2e tests run against an isolated in-memory MongoDB (`mongodb-memory-server`, wired via `test/setup/mongoMemoryServer.ts` in `vitest.config.e2e.ts`): each test file gets its own instance, no local database or manual cleanup between runs is needed, and unit tests mock the Mongoose model instead of touching any database.
+- App-level wiring applied by `main.ts` (CORS, future body limits, …) lives in `setupApp` (`src/app.setup.ts`); an e2e test that depends on it calls `setupApp` on the testing app, so tests and production share the exact same configuration. Env vars read at module import time (ConfigModule) are set in tests via `vi.hoisted`, before imports run.
 - Test behavior, not implementation. Names state the expectation: `should return 404 when user not found`.
 - Every new feature or bug fix ships with a test. A bug fix starts with a failing test that reproduces it.
 - Mock dependencies in unit tests via Nest's `Test.createTestingModule` with provider overrides.
