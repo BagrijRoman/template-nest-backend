@@ -10,10 +10,9 @@ import {
   ApiPayloadTooLargeResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { UserResponseDto } from '../users/dto/index.js';
-import type { SafeUser } from '../users/entities/index.js';
 import { AUTH_THROTTLE_LIMIT, AUTH_THROTTLE_TTL_MS } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
 import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
@@ -27,11 +26,11 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('sign-up')
-  @ApiOperation({ summary: 'Sign up a new user' })
-  @ApiCreatedResponse({ type: UserResponseDto })
+  @ApiOperation({ summary: 'Sign up a new user and start a session' })
+  @ApiCreatedResponse({ type: AuthResponseDto })
   @ApiBadRequestResponse({ description: 'Validation failed' })
   @ApiConflictResponse({ description: 'A user with this email already exists' })
-  signUp(@Body() signUpDto: SignUpDto): Promise<SafeUser> {
+  signUp(@Body() signUpDto: SignUpDto): Promise<AuthResponseDto> {
     return this.authService.signUp(signUpDto);
   }
 
@@ -40,8 +39,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Sign in with email and password' })
   @ApiOkResponse({ type: AuthResponseDto })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiNotImplementedResponse({ description: 'Not implemented yet' })
-  signIn(@Body() signInDto: SignInDto): AuthResponseDto {
+  @ApiUnauthorizedResponse({ description: 'Invalid email or password' })
+  signIn(@Body() signInDto: SignInDto): Promise<AuthResponseDto> {
     return this.authService.signIn(signInDto);
   }
 

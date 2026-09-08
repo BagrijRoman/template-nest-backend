@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CreateUserDto } from './dto/index.js';
 import { SafeUser, User } from './entities/index.js';
-import { hashPassword, verifyPasswordHash } from './password.util.js';
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPasswordHash } from './password.util.js';
 
 const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
 
@@ -47,10 +47,10 @@ export class UsersService {
   /** Checks credentials without ever exposing the stored hash. Returns the user on success. */
   async verifyPassword(email: string, password: string): Promise<SafeUser | null> {
     const user = await this.userModel.findOne({ email }).lean();
-    if (!user || !(await verifyPasswordHash(password, user.passwordHash))) {
-      return null;
-    }
-    return this.toSafeUser(user);
+    // An unknown email pays the same scrypt cost as a wrong password — response timing must not
+    // reveal whether an account exists.
+    const isValid = await verifyPasswordHash(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+    return user && isValid ? this.toSafeUser(user) : null;
   }
 
   private toSafeUser(user: LeanUser): SafeUser {

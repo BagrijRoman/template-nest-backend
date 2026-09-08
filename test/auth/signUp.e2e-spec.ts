@@ -9,6 +9,7 @@ import { AppModule } from '../../src/app.module.js';
 const OBJECT_ID_PATTERN = /^[0-9a-f]{24}$/;
 // `salt:hash` produced by password.util.ts: 16-byte salt and 64-byte key, hex-encoded.
 const PASSWORD_HASH_PATTERN = /^[0-9a-f]{32}:[0-9a-f]{128}$/;
+const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/;
 
 describe('POST /auth/sign-up (e2e)', () => {
   let app: INestApplication<App>;
@@ -42,22 +43,23 @@ describe('POST /auth/sign-up (e2e)', () => {
     await app.close();
   });
 
-  it('creates a user and returns its public shape', async () => {
+  it('creates a user and returns a token pair with its public shape', async () => {
     const response = await signUp(validBody).expect(201);
 
-    expect(response.body.id).toMatch(OBJECT_ID_PATTERN);
-    expect(response.body.email).toBe(email);
-    expect(response.body.firstName).toBe('Jane');
-    expect(response.body.lastName).toBe('Doe');
-    expect(response.body.createdAt).toBeDefined();
-    expect(response.body.updatedAt).toBeDefined();
+    expect(response.body.accessToken).toMatch(JWT_PATTERN);
+    expect(response.body.refreshToken).toMatch(JWT_PATTERN);
+    expect(response.body.user.id).toMatch(OBJECT_ID_PATTERN);
+    expect(response.body.user.email).toBe(email);
+    expect(response.body.user.firstName).toBe('Jane');
+    expect(response.body.user.lastName).toBe('Doe');
+    expect(response.body.user.createdAt).toBeDefined();
+    expect(response.body.user.updatedAt).toBeDefined();
   });
 
   it('never returns the password or its hash to the client', async () => {
     const response = await signUp(validBody).expect(201);
 
-    expect(response.body.password).toBeUndefined();
-    expect(response.body.passwordHash).toBeUndefined();
+    expect(JSON.stringify(response.body)).not.toContain('assword');
   });
 
   it('persists the user with a hashed password, not the plaintext one', async () => {
@@ -95,7 +97,7 @@ describe('POST /auth/sign-up (e2e)', () => {
       email: '  Auth.Jane@Example.COM ',
     }).expect(201);
 
-    expect(response.body.email).toBe(email);
+    expect(response.body.user.email).toBe(email);
   });
 
   it('trims first and last names', async () => {
@@ -105,8 +107,8 @@ describe('POST /auth/sign-up (e2e)', () => {
       lastName: '  Doe ',
     }).expect(201);
 
-    expect(response.body.firstName).toBe('Jane');
-    expect(response.body.lastName).toBe('Doe');
+    expect(response.body.user.firstName).toBe('Jane');
+    expect(response.body.user.lastName).toBe('Doe');
   });
 
   it('rejects an invalid email with the standard error shape', async () => {
@@ -205,6 +207,6 @@ describe('POST /auth/sign-up (e2e)', () => {
   it('strips unknown fields from the payload', async () => {
     const response = await signUp({ ...validBody, isAdmin: true }).expect(201);
 
-    expect(response.body.isAdmin).toBeUndefined();
+    expect(response.body.user.isAdmin).toBeUndefined();
   });
 });

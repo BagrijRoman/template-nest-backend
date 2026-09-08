@@ -20,20 +20,6 @@ describe('Scaffolded auth endpoints (e2e)', () => {
     await app.close();
   });
 
-  it('POST /auth/sign-in should return 501 until implemented', () => {
-    return request(app.getHttpServer())
-      .post('/auth/sign-in')
-      .send({ email: 'auth.jane@example.com', password: 'Secret123' })
-      .expect(501);
-  });
-
-  it('POST /auth/sign-in should return 400 on invalid body', () => {
-    return request(app.getHttpServer())
-      .post('/auth/sign-in')
-      .send({ email: 'not-an-email' })
-      .expect(400);
-  });
-
   it('POST /auth/refresh should return 501 until implemented', () => {
     return request(app.getHttpServer())
       .post('/auth/refresh')

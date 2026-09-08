@@ -4,8 +4,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { User } from './entities/index.js';
-import { hashPassword, verifyPasswordHash } from './password.util.js';
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPasswordHash } from './password.util.js';
 import { UsersService } from './users.service.js';
+
+// verifyPasswordHash is wrapped in a spy (behavior unchanged) so tests can observe the
+// dummy verification that equalizes timing for unknown emails.
+vi.mock('./password.util.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./password.util.js')>();
+  return { ...original, verifyPasswordHash: vi.fn(original.verifyPasswordHash) };
+});
 
 const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
 
@@ -38,6 +45,9 @@ describe('UsersService', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    // resetAllMocks also wipes the module spy's pass-through implementation — restore it.
+    const original = await vi.importActual<typeof import('./password.util.js')>('./password.util.js');
+    vi.mocked(verifyPasswordHash).mockImplementation(original.verifyPasswordHash);
     userModel.exists.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -102,6 +112,14 @@ describe('UsersService', () => {
 
     userModel.findOne.mockImplementation(() => withLean(null));
     expect(await service.verifyPassword('missing@example.com', 'secret123')).toBeNull();
+  });
+
+  it('runs a dummy hash verification for unknown emails so timing does not reveal account existence', async () => {
+    userModel.findOne.mockImplementation(() => withLean(null));
+
+    await service.verifyPassword('missing@example.com', 'secret123');
+
+    expect(verifyPasswordHash).toHaveBeenCalledExactlyOnceWith('secret123', DUMMY_PASSWORD_HASH);
   });
 
   it('never exposes the password hash', async () => {

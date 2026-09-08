@@ -27,8 +27,9 @@ describe('Auth rate limiting (e2e)', () => {
         .post('/auth/sign-in')
         .send({ email: 'auth.jane@example.com', password: 'Secret123' });
 
+    // The account does not exist — each attempt burns the limit with a generic 401.
     for (let attempt = 0; attempt < AUTH_THROTTLE_LIMIT; attempt += 1) {
-      await signIn().expect(501);
+      await signIn().expect(401);
     }
 
     const response = await signIn().expect(429);

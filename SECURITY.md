@@ -30,7 +30,9 @@ Security posture of this backend from the development standpoint: what is implem
 
 ### Tokens
 
-- All JWT signing/verification is centralized in `TokensService` (`src/auth/tokens.service.ts`, `@nestjs/jwt`): access and refresh tokens use distinct secrets, so one kind never passes verification where the other is expected; payloads carry only `sub` (+ `jti` on refresh tokens) — a JWT is encoded, not encrypted, so nothing sensitive goes in. Invalid/expired/forged tokens all collapse into the same `null` (→ generic 401), leaking nothing about why verification failed. The endpoints wiring this into sign-in/refresh/logout land next.
+- All JWT signing/verification is centralized in `TokensService` (`src/auth/tokens.service.ts`, `@nestjs/jwt`): access and refresh tokens use distinct secrets, so one kind never passes verification where the other is expected; payloads carry only `sub` (+ `jti` on refresh tokens) — a JWT is encoded, not encrypted, so nothing sensitive goes in. Invalid/expired/forged tokens all collapse into the same `null` (→ generic 401), leaking nothing about why verification failed.
+- `/auth/sign-up` and `/auth/sign-in` issue a token pair and persist the refresh token; `/auth/refresh` (rotation) and `/auth/logout` (revocation) land next on top of the atomic `consume`.
+- **Sign-in leaks no account existence**: unknown email and wrong password get the byte-identical generic 401, and an unknown email still pays the full scrypt cost against a well-formed dummy hash (`DUMMY_PASSWORD_HASH` in `src/users/password.util.ts`), so response timing does not differ either. (Sign-up's 409 on duplicate email remains a deliberate, accepted trade-off.)
 - Refresh tokens are stored server-side **only as sha256 hashes** (`src/auth/refreshTokens.service.ts`, MongoDB collection with a unique index on the hash): a database leak exposes nothing replayable. Deterministic sha256 (not scrypt) is deliberate — the token embeds a 256-bit HMAC signature, so preimage resistance suffices, and hash lookup requires determinism. A record's presence is what makes a token redeemable: `consume` verifies and atomically deletes it (`findOneAndDelete`), so a token can never be redeemed twice even under concurrent requests — rotation and revocation both build on this. A TTL index on `expiresAt` (mirrored from the token's `exp` claim) auto-purges dead records.
 
 ### Error handling & logging
@@ -51,8 +53,7 @@ All of the above is covered by tests (unit + e2e against an isolated in-memory M
 
 Deferred deliberately — rules already exist in `CLAUDE.md` and apply when the corresponding work happens:
 
-- **Sign-in anti-enumeration** (with the JWT flow implementation): the same generic 401 for an unknown email and a wrong password, plus a dummy hash verification so response timing does not reveal account existence.
-- **JWT flow hygiene** (same milestone): short access-token TTL, refresh rotation on every use, refresh tokens stored only hashed, nothing sensitive in token payloads.
+- **Refresh rotation & logout** (next): `/auth/refresh` exchanges a token for a fresh pair (rotation on every use), `/auth/logout` revokes; both redeem through the atomic `consume`.
 - **`trust proxy` + shared throttler storage (Redis)** when deploying behind a reverse proxy or in multiple replicas.
 - **Cookies & CSRF**: if refresh tokens ever move into cookies — `httpOnly` + `SameSite` + CSRF protection in the same change.
 - **CI automation** for `npm audit`, lint and tests once a pipeline exists.
