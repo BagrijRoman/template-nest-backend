@@ -63,6 +63,11 @@ export class UsersService {
     return user ? this.toSafeUser(user) : null;
   }
 
+  async findByEmail(email: string): Promise<SafeUser | null> {
+    const user = await this.userModel.findOne({ email }).lean();
+    return user ? this.toSafeUser(user) : null;
+  }
+
   /** Checks credentials without ever exposing the stored hash. Returns the user on success. */
   async verifyPassword(email: string, password: string): Promise<SafeUser | null> {
     const user = await this.userModel.findOne({ email }).lean();

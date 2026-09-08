@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { UsersService } from '../users/users.service.js';
 import { RefreshToken } from './entities/index.js';
 import { TokensService } from './tokens.service.js';
 
@@ -20,6 +22,8 @@ export class RefreshTokensService {
     @InjectModel(RefreshToken.name) private readonly refreshTokenModel: Model<RefreshToken>,
     private readonly tokensService: TokensService,
     private readonly securityEvents: SecurityEventsService,
+    private readonly usersService: UsersService,
+    private readonly mailService: MailService,
   ) {}
 
   /** Stores a just-issued refresh token, hashed, inside the given family; the record expires with the token. */
@@ -69,8 +73,24 @@ export class RefreshTokensService {
         familyId: reusedRecord.familyId,
       });
       await this.revokeFamily(reusedRecord.familyId);
+      await this.notifyOwner(reusedRecord.userId);
     }
     return null;
+  }
+
+  private async notifyOwner(userId: string): Promise<void> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      return;
+    }
+    await this.mailService.send({
+      to: user.email,
+      subject: 'Suspicious activity: one of your sessions was terminated',
+      text:
+        'A sign-in token of yours was used twice, which normally means it was stolen. ' +
+        'The affected session has been terminated; your other devices are unaffected. ' +
+        'If this was not you, we recommend changing your password.',
+    });
   }
 
   /** Revokes every token of one device session; the caller's generic 401 stays indistinguishable. */

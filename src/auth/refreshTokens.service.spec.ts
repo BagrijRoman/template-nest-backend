@@ -4,7 +4,9 @@ import { JwtService } from '@nestjs/jwt';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { UsersService } from '../users/users.service.js';
 import { RefreshToken } from './entities/index.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { TokensService } from './tokens.service.js';
@@ -35,10 +37,13 @@ describe('RefreshTokensService', () => {
   };
 
   const securityEvents = { record: vi.fn() };
+  const usersService = { findById: vi.fn() };
+  const mailService = { send: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
     refreshTokenModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+    usersService.findById.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -48,6 +53,8 @@ describe('RefreshTokensService', () => {
         { provide: ConfigService, useValue: { getOrThrow: (key: string) => envMock[key] } },
         { provide: getModelToken(RefreshToken.name), useValue: refreshTokenModel },
         { provide: SecurityEventsService, useValue: securityEvents },
+        { provide: UsersService, useValue: usersService },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 
@@ -110,6 +117,21 @@ describe('RefreshTokensService', () => {
       userId: USER_ID,
       familyId: FAMILY_ID,
     });
+  });
+
+  it('emails the owner when reuse terminates their session', async () => {
+    const refreshToken = await issueRefreshToken();
+    refreshTokenModel.findOneAndUpdate.mockReturnValue(withLean(null));
+    refreshTokenModel.findOne.mockReturnValue(
+      withLean({ userId: USER_ID, familyId: FAMILY_ID, consumedAt: new Date() }),
+    );
+    usersService.findById.mockResolvedValue({ id: USER_ID, email: 'jane@example.com' });
+
+    await service.consume(refreshToken);
+
+    expect(mailService.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'jane@example.com', subject: expect.stringContaining('Suspicious') }),
+    );
   });
 
   it('returns null for an unknown token without revoking anything', async () => {

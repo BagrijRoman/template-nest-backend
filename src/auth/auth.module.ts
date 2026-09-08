@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
+import { MailModule } from '../common/mail/mail.module.js';
 import { SecurityEventsModule } from '../common/securityEvents/securityEvents.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { AuthController } from './auth.controller.js';
@@ -14,6 +15,7 @@ import { TokensService } from './tokens.service.js';
   // JwtModule is registered without global options: access and refresh tokens use distinct
   // secrets/TTLs, so TokensService passes them per call instead.
   imports: [
+    MailModule,
     SecurityEventsModule,
     UsersModule,
     JwtModule.register({}),

@@ -37,6 +37,7 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 29 | Backend App: Auth: Change password | Requires current password; wrong attempts feed the lockout; revokes all sessions (logout everywhere) and returns a fresh one |
 | 30 | Backend App: Breached-password check | haveibeenpwned k-anonymity API on sign-up and password change; fails open; toggle via env |
 | 31 | Backend App: Security audit events | Single structured-event funnel over pino for all auth actions; warn level for suspicious events; emails only as hashes |
+| 32 | Backend App: Suspicious-activity email notifications | Lockout and token-reuse warnings to the account owner via a MailService stub transport (logs instead of sending; real provider = one adapter) |
 
 ## Not implemented (future scope)
 
@@ -44,7 +45,7 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | --- | --- | --- |
 | 29 | Backend App: Auth: Forgot password / restore password flow | Requires email service |
 | 30 | Backend App: Auth: Email verification flow | Requires email service; token issuance on sign-up must move behind verification |
-| 31 | Backend App: Email service setup | Provider account needed (e.g. Twilio SendGrid); templates estimated separately |
+| 31 | Backend App: Email service setup | Real transport adapter for the existing MailService stub; provider account needed (e.g. Twilio SendGrid); templates estimated separately |
 | 34 | Backend App: User roles setup | Needed once admin web app starts |
 | 35 | Backend App: User profile CRUD | PATCH /users/me, delete account |
 | 37 | Backend App: Database migrations | migrate-mongo (fixed stack decision); indexes currently rely on autoIndex |

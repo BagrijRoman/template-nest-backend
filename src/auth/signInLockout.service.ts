@@ -1,7 +1,9 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, trusted } from 'mongoose';
+import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { UsersService } from '../users/users.service.js';
 import { MAX_FAILED_SIGN_IN_ATTEMPTS, SIGN_IN_LOCKOUT_WINDOW_MS } from './auth.constants.js';
 import { SignInAttempt } from './entities/index.js';
 
@@ -17,6 +19,8 @@ export class SignInLockoutService {
   constructor(
     @InjectModel(SignInAttempt.name) private readonly signInAttemptModel: Model<SignInAttempt>,
     private readonly securityEvents: SecurityEventsService,
+    private readonly usersService: UsersService,
+    private readonly mailService: MailService,
   ) {}
 
   /** Rejects with 429 while the email is locked; the window slides with every failed attempt. */
@@ -42,7 +46,26 @@ export class SignInLockoutService {
     );
     if (attempt.failedCount === MAX_FAILED_SIGN_IN_ATTEMPTS) {
       this.securityEvents.record(SecurityEvent.SignInLocked, { email });
+      await this.notifyAccountOwner(email);
     }
+  }
+
+  /**
+   * Counters cover unknown emails (anti-enumeration), but the warning email goes only to accounts
+   * that exist — mailing every probed address would spam strangers on an attacker's word.
+   */
+  private async notifyAccountOwner(email: string): Promise<void> {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      return;
+    }
+    await this.mailService.send({
+      to: user.email,
+      subject: 'Suspicious sign-in activity on your account',
+      text:
+        `Sign-in to your account was temporarily locked after ${MAX_FAILED_SIGN_IN_ATTEMPTS} failed password attempts. ` +
+        'If this was not you, we recommend changing your password once the lock expires.',
+    });
   }
 
   /** A successful sign-in proves the caller owns the password — the slate is wiped. */

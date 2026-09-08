@@ -3,7 +3,9 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_FAILED_SIGN_IN_ATTEMPTS } from './auth.constants.js';
+import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { UsersService } from '../users/users.service.js';
 import { SignInAttempt } from './entities/index.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 
@@ -17,6 +19,8 @@ describe('SignInLockoutService', () => {
   let service: SignInLockoutService;
 
   const securityEvents = { record: vi.fn() };
+  const usersService = { findByEmail: vi.fn() };
+  const mailService = { send: vi.fn() };
   const signInAttemptModel = {
     deleteOne: vi.fn(),
     findOne: vi.fn(),
@@ -27,12 +31,15 @@ describe('SignInLockoutService', () => {
     vi.resetAllMocks();
     signInAttemptModel.deleteOne.mockResolvedValue({ deletedCount: 0 });
     signInAttemptModel.findOneAndUpdate.mockResolvedValue({ failedCount: 1 });
+    usersService.findByEmail.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SignInLockoutService,
         { provide: getModelToken(SignInAttempt.name), useValue: signInAttemptModel },
         { provide: SecurityEventsService, useValue: securityEvents },
+        { provide: UsersService, useValue: usersService },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 
@@ -86,6 +93,26 @@ describe('SignInLockoutService', () => {
     await service.recordFailure(EMAIL);
 
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.SignInLocked, { email: EMAIL });
+  });
+
+  it('emails the account owner when the lock engages on an existing account', async () => {
+    signInAttemptModel.findOneAndUpdate.mockResolvedValue({ failedCount: MAX_FAILED_SIGN_IN_ATTEMPTS });
+    usersService.findByEmail.mockResolvedValue({ id: 'user-1', email: EMAIL });
+
+    await service.recordFailure(EMAIL);
+
+    expect(mailService.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: EMAIL, subject: expect.stringContaining('Suspicious') }),
+    );
+  });
+
+  it('sends nothing when the locked email belongs to no account — probing must not spam strangers', async () => {
+    signInAttemptModel.findOneAndUpdate.mockResolvedValue({ failedCount: MAX_FAILED_SIGN_IN_ATTEMPTS });
+    usersService.findByEmail.mockResolvedValue(null);
+
+    await service.recordFailure(EMAIL);
+
+    expect(mailService.send).not.toHaveBeenCalled();
   });
 
   it('resets the counter after a successful sign-in', async () => {
