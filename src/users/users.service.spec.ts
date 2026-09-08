@@ -41,6 +41,7 @@ describe('UsersService', () => {
     create: vi.fn(),
     exists: vi.fn(),
     findById: vi.fn(),
+    findByIdAndUpdate: vi.fn(),
     findOne: vi.fn(),
   };
 
@@ -131,6 +132,26 @@ describe('UsersService', () => {
 
     expect(await service.findById('not-an-object-id')).toBeNull();
     expect(userModel.findById).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates the password after verifying the current one, storing a new hash', async () => {
+    const doc = leanUser();
+    userModel.findById.mockReturnValue(withLean(doc));
+    userModel.findByIdAndUpdate.mockReturnValue(withLean({ ...doc, passwordHash: 'replaced' }));
+
+    const user = await service.updatePassword(doc._id.toString(), 'secret123', 'NewSecret123');
+
+    expect(user?.id).toBe(doc._id.toString());
+    expect(user).not.toHaveProperty('passwordHash');
+    const [, update] = userModel.findByIdAndUpdate.mock.calls[0];
+    expect(await verifyPasswordHash('NewSecret123', update.passwordHash)).toBe(true);
+  });
+
+  it('rejects a password update when the current password is wrong, without writing anything', async () => {
+    userModel.findById.mockReturnValue(withLean(leanUser()));
+
+    expect(await service.updatePassword(new Types.ObjectId().toString(), 'wrong', 'NewSecret123')).toBeNull();
+    expect(userModel.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 
   it('runs a dummy hash verification for unknown emails so timing does not reveal account existence', async () => {

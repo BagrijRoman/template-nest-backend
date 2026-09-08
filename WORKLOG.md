@@ -34,6 +34,7 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 26 | Backend App: Security documentation | SECURITY.md: implemented posture, refresh-rotation deep-dive, prioritized backlog |
 | 27 | Backend App: Auth: Refresh token reuse detection | Token families (one per device session); replayed consumed token revokes its family, other sessions untouched |
 | 28 | Backend App: Auth: Per-account sign-in lockout | 5 failed attempts lock the email for a sliding 15-min window (429); unknown emails lock identically (no enumeration oracle); success resets |
+| 29 | Backend App: Auth: Change password | Requires current password; wrong attempts feed the lockout; revokes all sessions (logout everywhere) and returns a fresh one |
 
 ## Not implemented (future scope)
 
@@ -46,7 +47,6 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 33 | Backend App: Security audit log | Auth events with IP/request id; basis for 401/429 spike alerting |
 | 34 | Backend App: User roles setup | Needed once admin web app starts |
 | 35 | Backend App: User profile CRUD | PATCH /users/me, delete account |
-| 36 | Backend App: Change password | Must revoke all refresh tokens in the same change |
 | 37 | Backend App: Database migrations | migrate-mongo (fixed stack decision); indexes currently rely on autoIndex |
 | 38 | Backend App: CI pipeline | GitHub Actions: lint + unit + e2e + npm audit on every push |
 | 39 | Backend App: Docker setup | Dockerfile + docker-compose (app + MongoDB) |

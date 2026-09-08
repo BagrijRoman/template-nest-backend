@@ -62,6 +62,25 @@ export class UsersService {
     return user && isValid ? this.toSafeUser(user) : null;
   }
 
+  /**
+   * Verifies the current password and replaces the hash. Returns the user, or null when the
+   * account is gone or the current password is wrong — indistinguishable on purpose.
+   */
+  async updatePassword(id: string, currentPassword: string, newPassword: string): Promise<SafeUser | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+    const user = await this.userModel.findById(id).lean();
+    if (!user || !(await verifyPasswordHash(currentPassword, user.passwordHash))) {
+      return null;
+    }
+
+    const updated = await this.userModel
+      .findByIdAndUpdate(user._id, { passwordHash: await hashPassword(newPassword) }, { new: true })
+      .lean();
+    return updated ? this.toSafeUser(updated) : null;
+  }
+
   private toSafeUser(user: LeanUser): SafeUser {
     return {
       id: user._id.toString(),

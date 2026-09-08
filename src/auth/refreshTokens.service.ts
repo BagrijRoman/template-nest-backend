@@ -76,4 +76,9 @@ export class RefreshTokensService {
   private async revokeFamily(familyId: string): Promise<void> {
     await this.refreshTokenModel.deleteMany({ familyId });
   }
+
+  /** "Logout everywhere": kills every device session of the user (password change, compromise response). */
+  async revokeAllForUser(userId: string): Promise<void> {
+    await this.refreshTokenModel.deleteMany({ userId });
+  }
 }

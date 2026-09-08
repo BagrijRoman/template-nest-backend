@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
@@ -12,14 +13,14 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { CurrentUser } from '../common/decorators/currentUser.decorator.js';
 import { Public } from '../common/decorators/public.decorator.js';
+import type { AuthenticatedUser } from '../common/guards/jwtAuth.guard.js';
 import { AUTH_THROTTLE_LIMIT, AUTH_THROTTLE_TTL_MS } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
-import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
+import { AuthResponseDto, ChangePasswordDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
 
 @ApiTags('auth')
-// These are the routes that hand out tokens — they cannot demand one.
-@Public()
 @Throttle({ default: { ttl: AUTH_THROTTLE_TTL_MS, limit: AUTH_THROTTLE_LIMIT } })
 @ApiTooManyRequestsResponse({ description: 'Rate limit exceeded' })
 @ApiPayloadTooLargeResponse({ description: 'Request body exceeds the size limit' })
@@ -27,7 +28,9 @@ import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/in
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Token-issuing/revoking routes cannot demand a token — explicitly @Public(), unlike change-password below.
   @Post('sign-up')
+  @Public()
   @ApiOperation({ summary: 'Sign up a new user and start a session' })
   @ApiCreatedResponse({ type: AuthResponseDto })
   @ApiBadRequestResponse({ description: 'Validation failed' })
@@ -37,6 +40,7 @@ export class AuthController {
   }
 
   @Post('sign-in')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Sign in with email and password' })
   @ApiOkResponse({ type: AuthResponseDto })
@@ -50,6 +54,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Exchange a refresh token for a new token pair' })
   @ApiOkResponse({ type: AuthResponseDto })
@@ -60,11 +65,29 @@ export class AuthController {
   }
 
   @Post('logout')
+  @Public()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Revoke a refresh token' })
   @ApiNoContentResponse({ description: 'Logged out (idempotent — an already-revoked token gets the same answer)' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
   logout(@Body() refreshTokenDto: RefreshTokenDto): Promise<void> {
     return this.authService.logout(refreshTokenDto);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change the password; revokes every session and returns a fresh one' })
+  @ApiOkResponse({ type: AuthResponseDto })
+  @ApiBadRequestResponse({ description: 'Validation failed, or the current password is incorrect' })
+  @ApiUnauthorizedResponse({ description: 'Invalid or missing access token' })
+  @ApiTooManyRequestsResponse({
+    description: 'Rate limit exceeded, or temporarily locked after repeated failed password attempts',
+  })
+  changePassword(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ): Promise<AuthResponseDto> {
+    return this.authService.changePassword(currentUser.id, changePasswordDto);
   }
 }

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { SafeUser } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
-import { AuthResponseDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
+import { AuthResponseDto, ChangePasswordDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
@@ -62,6 +62,36 @@ export class AuthService {
    */
   async logout(refreshTokenDto: RefreshTokenDto): Promise<void> {
     await this.refreshTokensService.consume(refreshTokenDto.refreshToken);
+  }
+
+  /**
+   * Requires the current password even with a valid access token (a stolen token must not be
+   * enough to take the account over), counts wrong attempts toward the sign-in lockout (the
+   * endpoint must not become a quieter place to brute-force), revokes every session on success
+   * and hands the calling device a fresh one.
+   */
+  async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<AuthResponseDto> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+    }
+
+    await this.signInLockoutService.assertNotLocked(user.email);
+
+    const updated = await this.usersService.updatePassword(
+      userId,
+      changePasswordDto.currentPassword,
+      changePasswordDto.newPassword,
+    );
+    if (!updated) {
+      await this.signInLockoutService.recordFailure(user.email);
+      // 400, not 401: a 401 would make clients treat the access token as dead and force a logout.
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    await this.signInLockoutService.reset(user.email);
+    await this.refreshTokensService.revokeAllForUser(userId);
+    return this.issueSession(updated);
   }
 
   /**

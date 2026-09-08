@@ -1,4 +1,4 @@
-import { HttpException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsersService } from '../users/users.service.js';
@@ -22,9 +22,9 @@ const FAMILY_ID = 'e2a4b9a2-1c3d-4e5f-8a7b-9c0d1e2f3a4b';
 describe('AuthService', () => {
   let service: AuthService;
 
-  const usersService = { create: vi.fn(), findById: vi.fn(), verifyPassword: vi.fn() };
+  const usersService = { create: vi.fn(), findById: vi.fn(), updatePassword: vi.fn(), verifyPassword: vi.fn() };
   const tokensService = { issueTokenPair: vi.fn() };
-  const refreshTokensService = { consume: vi.fn(), persist: vi.fn() };
+  const refreshTokensService = { consume: vi.fn(), persist: vi.fn(), revokeAllForUser: vi.fn() };
   const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
 
   beforeEach(async () => {
@@ -140,6 +140,44 @@ describe('AuthService', () => {
       new UnauthorizedException('Invalid refresh token'),
     );
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  it('changes the password: revokes every session, resets the lockout and hands back a fresh session', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    usersService.updatePassword.mockResolvedValue(USER);
+
+    const response = await service.changePassword(USER.id, {
+      currentPassword: 'OldSecret123',
+      newPassword: 'NewSecret123',
+    });
+
+    expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
+    expect(usersService.updatePassword).toHaveBeenCalledWith(USER.id, 'OldSecret123', 'NewSecret123');
+    expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
+    expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
+  });
+
+  it('rejects a wrong current password with 400, counts it toward the lockout and revokes nothing', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    usersService.updatePassword.mockResolvedValue(null);
+
+    await expect(
+      service.changePassword(USER.id, { currentPassword: 'Wrong1234', newPassword: 'NewSecret123' }),
+    ).rejects.toThrow(new BadRequestException('Current password is incorrect'));
+    expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
+    expect(refreshTokensService.revokeAllForUser).not.toHaveBeenCalled();
+    expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  it('refuses to change the password while the email is locked, before verifying anything', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    const locked = new HttpException('Too many failed sign-in attempts, try again later', 429);
+    signInLockoutService.assertNotLocked.mockRejectedValue(locked);
+
+    await expect(
+      service.changePassword(USER.id, { currentPassword: 'OldSecret123', newPassword: 'NewSecret123' }),
+    ).rejects.toThrow(locked);
+    expect(usersService.updatePassword).not.toHaveBeenCalled();
   });
 
   it('logs out by consuming the token, and stays idempotent for an unredeemable one', async () => {

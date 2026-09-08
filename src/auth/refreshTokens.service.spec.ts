@@ -113,6 +113,12 @@ describe('RefreshTokensService', () => {
     expect(refreshTokenModel.deleteMany).not.toHaveBeenCalled();
   });
 
+  it('revokes every session of a user at once', async () => {
+    await service.revokeAllForUser(USER_ID);
+
+    expect(refreshTokenModel.deleteMany).toHaveBeenCalledWith({ userId: USER_ID });
+  });
+
   it('returns null for an invalid token without touching the database', async () => {
     expect(await service.consume('not-a-jwt')).toBeNull();
     expect(refreshTokenModel.findOneAndUpdate).not.toHaveBeenCalled();
