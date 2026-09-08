@@ -74,5 +74,10 @@ export const validateEnv = (config: Record<string, unknown>): EnvironmentVariabl
     throw new Error(`Invalid environment configuration:\n${messages.join('\n')}`);
   }
 
+  // Equal secrets would let a refresh token pass verification wherever an access token is expected.
+  if (validated.JWT_ACCESS_SECRET === validated.JWT_REFRESH_SECRET) {
+    throw new Error('Invalid environment configuration:\nJWT_ACCESS_SECRET and JWT_REFRESH_SECRET must differ');
+  }
+
   return validated;
 };
