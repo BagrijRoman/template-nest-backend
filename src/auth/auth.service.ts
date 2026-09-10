@@ -4,6 +4,7 @@ import type { SafeUser } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthResponseDto, ChangePasswordDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { EmailVerificationService } from './emailVerification.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
@@ -21,11 +22,13 @@ export class AuthService {
     private readonly refreshTokensService: RefreshTokensService,
     private readonly signInLockoutService: SignInLockoutService,
     private readonly securityEvents: SecurityEventsService,
+    private readonly emailVerificationService: EmailVerificationService,
   ) {}
 
   async signUp(signUpDto: SignUpDto): Promise<AuthResponseDto> {
     const user = await this.usersService.create(signUpDto);
     this.securityEvents.record(SecurityEvent.UserSignedUp, { userId: user.id });
+    await this.emailVerificationService.sendVerification(user);
     return this.issueSession(user);
   }
 

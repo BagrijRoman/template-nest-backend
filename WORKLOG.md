@@ -39,12 +39,12 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 31 | Backend App: Security audit events | Single structured-event funnel over pino for all auth actions; warn level for suspicious events; emails only as hashes |
 | 32 | Backend App: Suspicious-activity email notifications | Lockout and token-reuse warnings to the account owner via a MailService stub transport (logs instead of sending; real provider = one adapter) |
 | 33 | Backend App: Auth: Forgot / reset password flow | Single-use hashed token (30-min TTL, one active per user) over the mail stub; anti-enumeration 204; reset revokes every session |
+| 34 | Backend App: Auth: Email verification flow | emailVerified flag + single-use hashed token (24h TTL) sent at sign-up; verify/resend endpoints, resend reveals no account state |
 
 ## Not implemented (future scope)
 
 | # | Feature | Notes |
 | --- | --- | --- |
-| 30 | Backend App: Auth: Email verification flow | Requires email service; token issuance on sign-up must move behind verification |
 | 31 | Backend App: Email service setup | Real transport adapter for the existing MailService stub; provider account needed (e.g. Twilio SendGrid); templates estimated separately |
 | 34 | Backend App: User roles setup | Needed once admin web app starts |
 | 35 | Backend App: User profile CRUD | PATCH /users/me, delete account |

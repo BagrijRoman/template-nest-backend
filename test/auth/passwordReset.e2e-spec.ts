@@ -54,6 +54,8 @@ describe('Password reset flow (e2e)', () => {
       .send({ email, firstName: 'Jane', lastName: 'Doe', password })
       .expect(201);
     refreshToken = signUpResponse.body.refreshToken;
+    // Sign-up sends a verification email — drop it so tests count only reset mails.
+    sentMails.length = 0;
   });
 
   afterEach(async () => {

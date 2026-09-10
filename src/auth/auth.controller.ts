@@ -24,9 +24,12 @@ import {
   ForgotPasswordDto,
   RefreshTokenDto,
   ResetPasswordDto,
+  ResendVerificationDto,
   SignInDto,
   SignUpDto,
+  VerifyEmailDto,
 } from './dto/index.js';
+import { EmailVerificationService } from './emailVerification.service.js';
 import { PasswordResetService } from './passwordReset.service.js';
 
 @ApiTags('auth')
@@ -37,6 +40,7 @@ import { PasswordResetService } from './passwordReset.service.js';
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
+    private readonly emailVerificationService: EmailVerificationService,
     private readonly passwordResetService: PasswordResetService,
   ) {}
 
@@ -84,6 +88,28 @@ export class AuthController {
   @ApiBadRequestResponse({ description: 'Validation failed' })
   logout(@Body() refreshTokenDto: RefreshTokenDto): Promise<void> {
     return this.authService.logout(refreshTokenDto);
+  }
+
+  @Post('verify-email')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Verify the email address with a single-use token' })
+  @ApiNoContentResponse({ description: 'Email verified' })
+  @ApiBadRequestResponse({ description: 'Validation failed, or an invalid/expired token' })
+  verifyEmail(@Body() verifyEmailDto: VerifyEmailDto): Promise<void> {
+    return this.emailVerificationService.verify(verifyEmailDto.token);
+  }
+
+  @Post('resend-verification')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Resend the verification email' })
+  @ApiNoContentResponse({
+    description: 'Always 204 — the response never reveals whether the email belongs to an account',
+  })
+  @ApiBadRequestResponse({ description: 'Validation failed' })
+  resendVerification(@Body() resendVerificationDto: ResendVerificationDto): Promise<void> {
+    return this.emailVerificationService.resend(resendVerificationDto.email);
   }
 
   @Post('forgot-password')

@@ -13,6 +13,8 @@ export enum SecurityEvent {
   LoggedOut = 'auth.logged_out',
   PasswordChangeRejected = 'auth.password_change_rejected',
   PasswordChanged = 'auth.password_changed',
+  EmailVerificationSent = 'user.email_verification_sent',
+  EmailVerified = 'user.email_verified',
   PasswordResetRequested = 'auth.password_reset_requested',
   PasswordResetCompleted = 'auth.password_reset_completed',
 }

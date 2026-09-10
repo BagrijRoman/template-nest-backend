@@ -15,6 +15,11 @@ export class User {
   @Prop({ required: true })
   passwordHash: string;
 
+  // Verified via the email-verification flow. The template deliberately still issues tokens at
+  // sign-up; gating features on this flag is a per-product decision.
+  @Prop({ required: true, default: false })
+  emailVerified: boolean;
+
   // Managed by Mongoose via `timestamps: true`.
   createdAt: Date;
   updatedAt: Date;

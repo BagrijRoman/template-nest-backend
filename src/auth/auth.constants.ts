@@ -9,3 +9,6 @@ export const SIGN_IN_LOCKOUT_WINDOW_MS = 15 * 60_000;
 
 // Short-lived by design: a reset token arrives over email, the least trusted channel in the flow.
 export const PASSWORD_RESET_TOKEN_TTL_MS = 30 * 60_000;
+
+// Generous on purpose: verification is not a credential, and people open sign-up emails late.
+export const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60_000;

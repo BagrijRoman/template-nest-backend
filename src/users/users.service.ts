@@ -114,12 +114,22 @@ export class UsersService {
     return updated ? this.toSafeUser(updated) : null;
   }
 
+  async markEmailVerified(id: string): Promise<SafeUser | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+    const updated = await this.userModel.findByIdAndUpdate(id, { emailVerified: true }, { new: true }).lean();
+    return updated ? this.toSafeUser(updated) : null;
+  }
+
   private toSafeUser(user: LeanUser): SafeUser {
     return {
       id: user._id.toString(),
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      // Pre-flag documents lack the field; they are unverified by definition.
+      emailVerified: user.emailVerified ?? false,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

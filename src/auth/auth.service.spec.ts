@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { EmailVerificationService } from './emailVerification.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
@@ -28,6 +29,7 @@ describe('AuthService', () => {
   const refreshTokensService = { consume: vi.fn(), persist: vi.fn(), revokeAllForUser: vi.fn() };
   const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
   const securityEvents = { record: vi.fn() };
+  const emailVerificationService = { sendVerification: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -42,6 +44,7 @@ describe('AuthService', () => {
         { provide: RefreshTokensService, useValue: refreshTokensService },
         { provide: SignInLockoutService, useValue: signInLockoutService },
         { provide: SecurityEventsService, useValue: securityEvents },
+        { provide: EmailVerificationService, useValue: emailVerificationService },
       ],
     }).compile();
 
@@ -61,6 +64,7 @@ describe('AuthService', () => {
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(tokensService.issueTokenPair).toHaveBeenCalledWith(USER.id);
     expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, expect.any(String));
+    expect(emailVerificationService.sendVerification).toHaveBeenCalledWith(USER);
   });
 
   it('signs in with valid credentials and starts a session in a fresh token family', async () => {

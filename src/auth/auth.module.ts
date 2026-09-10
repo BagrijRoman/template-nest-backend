@@ -6,7 +6,10 @@ import { SecurityEventsModule } from '../common/securityEvents/securityEvents.mo
 import { UsersModule } from '../users/users.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { EmailVerificationService } from './emailVerification.service.js';
 import {
+  EmailVerificationToken,
+  EmailVerificationTokenSchema,
   PasswordResetToken,
   PasswordResetTokenSchema,
   RefreshToken,
@@ -28,13 +31,21 @@ import { TokensService } from './tokens.service.js';
     UsersModule,
     JwtModule.register({}),
     MongooseModule.forFeature([
+      { name: EmailVerificationToken.name, schema: EmailVerificationTokenSchema },
       { name: PasswordResetToken.name, schema: PasswordResetTokenSchema },
       { name: RefreshToken.name, schema: RefreshTokenSchema },
       { name: SignInAttempt.name, schema: SignInAttemptSchema },
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, PasswordResetService, RefreshTokensService, SignInLockoutService, TokensService],
+  providers: [
+    AuthService,
+    EmailVerificationService,
+    PasswordResetService,
+    RefreshTokensService,
+    SignInLockoutService,
+    TokensService,
+  ],
   exports: [AuthService, TokensService],
 })
 export class AuthModule {}

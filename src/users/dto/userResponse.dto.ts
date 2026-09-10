@@ -14,6 +14,9 @@ export class UserResponseDto implements SafeUser {
   @ApiProperty({ example: 'Doe' })
   lastName: string;
 
+  @ApiProperty({ description: 'Set by the email-verification flow', example: false })
+  emailVerified: boolean;
+
   @ApiProperty()
   createdAt: Date;
 

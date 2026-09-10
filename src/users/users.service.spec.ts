@@ -29,6 +29,7 @@ const leanUser = (overrides: Record<string, unknown> = {}) => ({
   firstName: 'Jane',
   lastName: 'Doe',
   passwordHash: storedPasswordHash,
+  emailVerified: false,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -183,6 +184,17 @@ describe('UsersService', () => {
 
     expect(await service.updatePassword(new Types.ObjectId().toString(), 'wrong', 'NewSecret123')).toBeNull();
     expect(userModel.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('marks the email verified and returns the safe shape', async () => {
+    const doc = leanUser({ emailVerified: true });
+    userModel.findByIdAndUpdate.mockReturnValue(withLean(doc));
+
+    const user = await service.markEmailVerified(doc._id.toString());
+
+    expect(userModel.findByIdAndUpdate.mock.calls[0][1]).toEqual({ emailVerified: true });
+    expect(user?.emailVerified).toBe(true);
+    expect(user).not.toHaveProperty('passwordHash');
   });
 
   it('runs a dummy hash verification for unknown emails so timing does not reveal account existence', async () => {
