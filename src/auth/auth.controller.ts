@@ -18,7 +18,16 @@ import { Public } from '../common/decorators/public.decorator.js';
 import type { AuthenticatedUser } from '../common/guards/jwtAuth.guard.js';
 import { AUTH_THROTTLE_LIMIT, AUTH_THROTTLE_TTL_MS } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
-import { AuthResponseDto, ChangePasswordDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
+import {
+  AuthResponseDto,
+  ChangePasswordDto,
+  ForgotPasswordDto,
+  RefreshTokenDto,
+  ResetPasswordDto,
+  SignInDto,
+  SignUpDto,
+} from './dto/index.js';
+import { PasswordResetService } from './passwordReset.service.js';
 
 @ApiTags('auth')
 @Throttle({ default: { ttl: AUTH_THROTTLE_TTL_MS, limit: AUTH_THROTTLE_LIMIT } })
@@ -26,7 +35,10 @@ import { AuthResponseDto, ChangePasswordDto, RefreshTokenDto, SignInDto, SignUpD
 @ApiPayloadTooLargeResponse({ description: 'Request body exceeds the size limit' })
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordResetService: PasswordResetService,
+  ) {}
 
   // Token-issuing/revoking routes cannot demand a token — explicitly @Public(), unlike change-password below.
   @Post('sign-up')
@@ -72,6 +84,28 @@ export class AuthController {
   @ApiBadRequestResponse({ description: 'Validation failed' })
   logout(@Body() refreshTokenDto: RefreshTokenDto): Promise<void> {
     return this.authService.logout(refreshTokenDto);
+  }
+
+  @Post('forgot-password')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Request a password reset email' })
+  @ApiNoContentResponse({
+    description: 'Always 204 — the response never reveals whether the email belongs to an account',
+  })
+  @ApiBadRequestResponse({ description: 'Validation failed' })
+  forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto): Promise<void> {
+    return this.passwordResetService.requestReset(forgotPasswordDto.email);
+  }
+
+  @Post('reset-password')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Set a new password with a single-use reset token; revokes every session' })
+  @ApiNoContentResponse({ description: 'Password replaced, all sessions revoked — sign in with the new password' })
+  @ApiBadRequestResponse({ description: 'Validation failed, invalid/expired token, or a breached new password' })
+  resetPassword(@Body() resetPasswordDto: ResetPasswordDto): Promise<void> {
+    return this.passwordResetService.resetPassword(resetPasswordDto.token, resetPasswordDto.newPassword);
   }
 
   @Post('change-password')

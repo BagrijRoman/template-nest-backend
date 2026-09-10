@@ -13,6 +13,8 @@ export enum SecurityEvent {
   LoggedOut = 'auth.logged_out',
   PasswordChangeRejected = 'auth.password_change_rejected',
   PasswordChanged = 'auth.password_changed',
+  PasswordResetRequested = 'auth.password_reset_requested',
+  PasswordResetCompleted = 'auth.password_reset_completed',
 }
 
 // Suspicious events log at warn so alerting can key on the level alone.

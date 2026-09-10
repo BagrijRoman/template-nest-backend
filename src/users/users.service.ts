@@ -90,13 +90,26 @@ export class UsersService {
       return null;
     }
 
+    return this.replacePassword(id, newPassword);
+  }
+
+  /**
+   * Sets a new password WITHOUT any proof of the current one — only for flows that established
+   * ownership another way (change-password verifies the current password first; the reset flow
+   * proves control of the email). Never expose this through a controller directly.
+   */
+  async replacePassword(id: string, newPassword: string): Promise<SafeUser | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+
     if (await this.breachedPasswordsService.isBreached(newPassword)) {
       this.securityEvents.record(SecurityEvent.BreachedPasswordRejected, { userId: id });
       throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
     }
 
     const updated = await this.userModel
-      .findByIdAndUpdate(user._id, { passwordHash: await hashPassword(newPassword) }, { new: true })
+      .findByIdAndUpdate(id, { passwordHash: await hashPassword(newPassword) }, { new: true })
       .lean();
     return updated ? this.toSafeUser(updated) : null;
   }
