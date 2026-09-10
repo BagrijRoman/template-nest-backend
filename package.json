@@ -20,7 +20,11 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "migrate:up": "migrate-mongo up",
+    "migrate:down": "migrate-mongo down",
+    "migrate:status": "migrate-mongo status",
+    "migrate:create": "migrate-mongo create"
   },
   "lint-staged": {
     "{src,test}/**/*.ts": [
@@ -32,7 +36,8 @@
     "@nestjs/throttler": {
       "@nestjs/common": "$@nestjs/common",
       "@nestjs/core": "$@nestjs/core"
-    }
+    },
+    "multer": "^2.3.0"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -46,6 +51,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "helmet": "^8.3.0",
+    "migrate-mongo": "^14.0.7",
     "mongoose": "^9.9.4",
     "nestjs-pino": "^5.1.0",
     "pino-http": "^11.0.0",

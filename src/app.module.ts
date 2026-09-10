@@ -68,6 +68,9 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         uri: config.getOrThrow<string>('MONGODB_URI'),
+        // In production indexes come from migrate-mongo migrations only (npm run migrate:up);
+        // autoIndex stays on elsewhere so dev and tests need no migration step.
+        autoIndex: config.getOrThrow<NodeEnv>('NODE_ENV') !== NodeEnv.Production,
         serverSelectionTimeoutMS: MONGODB_SERVER_SELECTION_TIMEOUT_MS,
         retryAttempts: MONGODB_RETRY_ATTEMPTS,
         retryDelay: MONGODB_RETRY_DELAY_MS,
