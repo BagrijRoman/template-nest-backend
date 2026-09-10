@@ -4,10 +4,13 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { MailModule } from '../common/mail/mail.module.js';
 import { SecurityEventsModule } from '../common/securityEvents/securityEvents.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { EmailVerificationService } from './emailVerification.service.js';
 import {
+  AccountActionCounter,
+  AccountActionCounterSchema,
   EmailVerificationToken,
   EmailVerificationTokenSchema,
   PasswordResetToken,
@@ -31,6 +34,7 @@ import { TokensService } from './tokens.service.js';
     UsersModule,
     JwtModule.register({}),
     MongooseModule.forFeature([
+      { name: AccountActionCounter.name, schema: AccountActionCounterSchema },
       { name: EmailVerificationToken.name, schema: EmailVerificationTokenSchema },
       { name: PasswordResetToken.name, schema: PasswordResetTokenSchema },
       { name: RefreshToken.name, schema: RefreshTokenSchema },
@@ -39,6 +43,7 @@ import { TokensService } from './tokens.service.js';
   ],
   controllers: [AuthController],
   providers: [
+    AccountRateLimitService,
     AuthService,
     EmailVerificationService,
     PasswordResetService,

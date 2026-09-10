@@ -113,6 +113,19 @@ describe('Password reset flow (e2e)', () => {
     await reset({ token: latestMailedToken(), newPassword }).expect(204);
   });
 
+  it('caps reset emails per account: still 204, no more mail, one security alert', async () => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await forgot({ email }).expect(204);
+    }
+
+    // 3 reset mails within the cap + exactly one alert; the 4th request produced no reset mail.
+    const alerts = sentMails.filter((mail) =>
+      mail.subject.startsWith('Security alert'),
+    );
+    expect(alerts).toHaveLength(1);
+    expect(sentMails).toHaveLength(4);
+  });
+
   it('rejects garbage tokens and weak new passwords', async () => {
     const forged = await reset({ token: 'a'.repeat(64), newPassword }).expect(
       400,

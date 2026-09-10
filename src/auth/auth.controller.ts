@@ -90,6 +90,20 @@ export class AuthController {
     return this.authService.logout(refreshTokenDto);
   }
 
+  @Post('send-verification')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Request a verification email for the authenticated account' })
+  @ApiNoContentResponse({ description: 'Verification email sent' })
+  @ApiBadRequestResponse({ description: 'Email is already verified' })
+  @ApiUnauthorizedResponse({ description: 'Invalid or missing access token' })
+  @ApiTooManyRequestsResponse({
+    description: 'Rate limit exceeded, or too many verification emails requested for this account',
+  })
+  sendVerification(@CurrentUser() currentUser: AuthenticatedUser): Promise<void> {
+    return this.emailVerificationService.requestVerification(currentUser.id);
+  }
+
   @Post('verify-email')
   @Public()
   @HttpCode(HttpStatus.NO_CONTENT)

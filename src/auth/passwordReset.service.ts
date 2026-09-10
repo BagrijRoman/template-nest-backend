@@ -5,11 +5,13 @@ import { Model } from 'mongoose';
 import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { UsersService } from '../users/users.service.js';
-import { PASSWORD_RESET_TOKEN_TTL_MS } from './auth.constants.js';
+import { AccountRateLimitService } from './accountRateLimit.service.js';
+import { EMAIL_ACTION_LIMIT, EMAIL_ACTION_WINDOW_MS, PASSWORD_RESET_TOKEN_TTL_MS } from './auth.constants.js';
 import { PasswordResetToken } from './entities/index.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 
 const RESET_TOKEN_BYTES = 32;
+const PASSWORD_RESET_EMAIL_ACTION = 'password-reset-email';
 const INVALID_TOKEN_MESSAGE = 'Invalid or expired reset token';
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
@@ -22,6 +24,7 @@ export class PasswordResetService {
     private readonly refreshTokensService: RefreshTokensService,
     private readonly mailService: MailService,
     private readonly securityEvents: SecurityEventsService,
+    private readonly accountRateLimit: AccountRateLimitService,
   ) {}
 
   /**
@@ -32,6 +35,18 @@ export class PasswordResetService {
   async requestReset(email: string): Promise<void> {
     const user = await this.usersService.findByEmail(email);
     if (!user) {
+      return;
+    }
+
+    // Over the cap the endpoint still answers 204 (a 429 would reveal the account exists) but
+    // sends nothing more; the owner got a security alert when the cap tripped.
+    const isAllowed = await this.accountRateLimit.consume(
+      PASSWORD_RESET_EMAIL_ACTION,
+      user,
+      EMAIL_ACTION_LIMIT,
+      EMAIL_ACTION_WINDOW_MS,
+    );
+    if (!isAllowed) {
       return;
     }
 

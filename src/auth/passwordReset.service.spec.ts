@@ -4,6 +4,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MailService } from '../common/mail/mail.service.js';
+import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { UsersService } from '../users/users.service.js';
 import { PasswordResetToken } from './entities/index.js';
@@ -29,10 +30,12 @@ describe('PasswordResetService', () => {
   const refreshTokensService = { revokeAllForUser: vi.fn() };
   const mailService = { send: vi.fn() };
   const securityEvents = { record: vi.fn() };
+  const accountRateLimit = { consume: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
     passwordResetTokenModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+    accountRateLimit.consume.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -42,6 +45,7 @@ describe('PasswordResetService', () => {
         { provide: RefreshTokensService, useValue: refreshTokensService },
         { provide: MailService, useValue: mailService },
         { provide: SecurityEventsService, useValue: securityEvents },
+        { provide: AccountRateLimitService, useValue: accountRateLimit },
       ],
     }).compile();
 
@@ -56,6 +60,16 @@ describe('PasswordResetService', () => {
     expect(passwordResetTokenModel.create).not.toHaveBeenCalled();
     expect(mailService.send).not.toHaveBeenCalled();
     expect(securityEvents.record).not.toHaveBeenCalled();
+  });
+
+  it('stays a silent no-op over the per-account cap — no token, no mail', async () => {
+    usersService.findByEmail.mockResolvedValue(USER);
+    accountRateLimit.consume.mockResolvedValue(false);
+
+    await service.requestReset(USER.email);
+
+    expect(passwordResetTokenModel.create).not.toHaveBeenCalled();
+    expect(mailService.send).not.toHaveBeenCalled();
   });
 
   it('stores only the hash of the token it emails, invalidating any previous token first', async () => {

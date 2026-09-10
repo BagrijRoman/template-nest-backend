@@ -4,6 +4,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MailService } from '../common/mail/mail.service.js';
+import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { UsersService } from '../users/users.service.js';
 import { EmailVerificationToken } from './entities/index.js';
@@ -26,10 +27,12 @@ describe('EmailVerificationService', () => {
   const usersService = { findByEmail: vi.fn(), markEmailVerified: vi.fn() };
   const mailService = { send: vi.fn() };
   const securityEvents = { record: vi.fn() };
+  const accountRateLimit = { consume: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
     emailVerificationTokenModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+    accountRateLimit.consume.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -38,6 +41,7 @@ describe('EmailVerificationService', () => {
         { provide: UsersService, useValue: usersService },
         { provide: MailService, useValue: mailService },
         { provide: SecurityEventsService, useValue: securityEvents },
+        { provide: AccountRateLimitService, useValue: accountRateLimit },
       ],
     }).compile();
 
@@ -79,6 +83,36 @@ describe('EmailVerificationService', () => {
       new BadRequestException('Invalid or expired verification token'),
     );
     expect(usersService.markEmailVerified).not.toHaveBeenCalled();
+  });
+
+  it('sends for an authenticated unverified caller identified by id', async () => {
+    usersService.findById = vi.fn().mockResolvedValue(USER);
+
+    await service.requestVerification(USER.id);
+
+    expect(mailService.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers the authenticated caller honestly: 400 when already verified, 429 when over the cap', async () => {
+    usersService.findById = vi.fn().mockResolvedValue({ ...USER, emailVerified: true });
+    await expect(service.requestVerification(USER.id)).rejects.toThrow('Email is already verified');
+
+    usersService.findById = vi.fn().mockResolvedValue(USER);
+    accountRateLimit.consume.mockResolvedValue(false);
+    await expect(service.requestVerification(USER.id)).rejects.toThrow(
+      'Too many verification emails requested, try again later',
+    );
+    expect(mailService.send).not.toHaveBeenCalled();
+  });
+
+  it('public resend stays a silent 204 over the cap — no mail, no error', async () => {
+    usersService.findByEmail.mockResolvedValue(USER);
+    accountRateLimit.consume.mockResolvedValue(false);
+
+    await service.resend(USER.email);
+
+    expect(mailService.send).not.toHaveBeenCalled();
+    expect(emailVerificationTokenModel.create).not.toHaveBeenCalled();
   });
 
   it('resends silently for an unverified account only', async () => {

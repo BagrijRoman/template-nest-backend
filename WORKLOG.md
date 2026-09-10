@@ -40,6 +40,9 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 32 | Backend App: Suspicious-activity email notifications | Lockout and token-reuse warnings to the account owner via a MailService stub transport (logs instead of sending; real provider = one adapter) |
 | 33 | Backend App: Auth: Forgot / reset password flow | Single-use hashed token (30-min TTL, one active per user) over the mail stub; anti-enumeration 204; reset revokes every session |
 | 34 | Backend App: Auth: Email verification flow | emailVerified flag + single-use hashed token (24h TTL) sent at sign-up; verify/resend endpoints, resend reveals no account state |
+| 35 | Backend App: Auth: Authenticated verification request | POST /auth/send-verification: caller identified by access token, no email in the body; honest 400 (already verified) / 429 |
+| 36 | Backend App: Per-account action rate limiting | Generic counters per action+account (fixed TTL window) on top of per-IP throttling; applied to all email-sending flows; public endpoints stay silent over the cap (no enumeration) |
+| 37 | Backend App: Security alert email on rate-limit trip | Exactly one alert to the account owner when a cap is first exceeded, plus a warn-level audit event |
 
 ## Not implemented (future scope)
 

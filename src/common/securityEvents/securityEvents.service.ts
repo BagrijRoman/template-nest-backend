@@ -13,6 +13,7 @@ export enum SecurityEvent {
   LoggedOut = 'auth.logged_out',
   PasswordChangeRejected = 'auth.password_change_rejected',
   PasswordChanged = 'auth.password_changed',
+  AccountRateLimitExceeded = 'account.rate_limit_exceeded',
   EmailVerificationSent = 'user.email_verification_sent',
   EmailVerified = 'user.email_verified',
   PasswordResetRequested = 'auth.password_reset_requested',
@@ -21,6 +22,7 @@ export enum SecurityEvent {
 
 // Suspicious events log at warn so alerting can key on the level alone.
 const WARNING_EVENTS: ReadonlySet<SecurityEvent> = new Set([
+  SecurityEvent.AccountRateLimitExceeded,
   SecurityEvent.SignInLocked,
   SecurityEvent.RefreshTokenReuseDetected,
   SecurityEvent.BreachedPasswordRejected,
@@ -31,6 +33,8 @@ export type SecurityEventDetails = {
   /** Raw email — the service hashes it before logging; plaintext never reaches the logs. */
   email?: string;
   familyId?: string;
+  /** Machine-readable action name for rate-limit events, e.g. "verification-email". */
+  action?: string;
 };
 
 const EMAIL_HASH_LENGTH = 16;
