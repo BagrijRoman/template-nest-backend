@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 
 // Payloads stay minimal on purpose: a JWT is encoded, not encrypted — nothing sensitive belongs here.
 export type AccessTokenPayload = { sub: string };
@@ -13,21 +13,25 @@ export type VerifiedRefreshTokenPayload = RefreshTokenPayload & { exp: number };
 
 export type TokenPair = { accessToken: string; refreshToken: string };
 
+// `expiresIn` accepts a number of seconds or an `ms`-style duration string; env validation already guarantees
+// the TTLs match `<number><unit>`, so reading them as this type is sound without a runtime cast.
+type JwtTtl = NonNullable<JwtSignOptions['expiresIn']>;
+
 @Injectable()
 export class TokensService {
   private readonly accessSecret: string;
-  private readonly accessTtl: string;
+  private readonly accessTtl: JwtTtl;
   private readonly refreshSecret: string;
-  private readonly refreshTtl: string;
+  private readonly refreshTtl: JwtTtl;
 
   constructor(
     private readonly jwtService: JwtService,
     config: ConfigService,
   ) {
     this.accessSecret = config.getOrThrow<string>('JWT_ACCESS_SECRET');
-    this.accessTtl = config.getOrThrow<string>('JWT_ACCESS_TTL');
+    this.accessTtl = config.getOrThrow<JwtTtl>('JWT_ACCESS_TTL');
     this.refreshSecret = config.getOrThrow<string>('JWT_REFRESH_SECRET');
-    this.refreshTtl = config.getOrThrow<string>('JWT_REFRESH_TTL');
+    this.refreshTtl = config.getOrThrow<JwtTtl>('JWT_REFRESH_TTL');
   }
 
   issueTokenPair(userId: string): Promise<TokenPair> {
