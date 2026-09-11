@@ -44,6 +44,7 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 36 | Backend App: Per-account action rate limiting | Generic counters per action+account (fixed TTL window) on top of per-IP throttling; applied to all email-sending flows; public endpoints stay silent over the cap (no enumeration) |
 | 37 | Backend App: Security alert email on rate-limit trip | Exactly one alert to the account owner when a cap is first exceeded, plus a warn-level audit event |
 | 38 | Backend App: Database migrations | migrate-mongo wired (ESM config, npm scripts); initial migration covers every schema index; autoIndex off in production |
+| 39 | Backend App: CI pipeline | GitHub Actions on every push/PR: lint, format check, npm audit (high+ blocks), unit + e2e; mongod binary cached; dummy env secrets |
 
 ## Not implemented (future scope)
 
@@ -52,5 +53,4 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Done
 | 31 | Backend App: Email service setup | Real transport adapter for the existing MailService stub; provider account needed (e.g. Twilio SendGrid); templates estimated separately |
 | 34 | Backend App: User roles setup | Needed once admin web app starts |
 | 35 | Backend App: User profile CRUD | PATCH /users/me, delete account |
-| 38 | Backend App: CI pipeline | GitHub Actions: lint + unit + e2e + npm audit on every push |
 | 39 | Backend App: Docker setup | Dockerfile + docker-compose (app + MongoDB) |

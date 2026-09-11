@@ -54,7 +54,11 @@ Security posture of this backend from the development standpoint: what is implem
 
 ### Dependencies
 
-- `npm audit` is clean (0 vulnerabilities) and must stay that way: it runs before every release, and high-severity findings in runtime dependencies block the release. The lockfile is always committed.
+- `npm audit` is clean (0 vulnerabilities) and must stay that way: CI runs `npm audit --audit-level=high` on every push/PR, and high-severity findings block the release. The lockfile is always committed. (`multer` is pinned >=2.3.0 via `overrides` to clear DoS advisories until `@nestjs/platform-express` catches up.)
+
+### CI
+
+- Every push and PR runs the full gate (`.github/workflows/ci.yml`): lint, Prettier check, `npm audit --audit-level=high`, unit tests, and e2e against an isolated in-memory MongoDB. CI uses well-formed dummy secrets injected as workflow env — no real secret ever lives in the repository or the workflow.
 
 ### Verification
 
@@ -86,7 +90,6 @@ Deferred deliberately — rules already exist in `CLAUDE.md` and apply when the 
 
 - **`trust proxy` + shared throttler storage (Redis)** when deploying behind a reverse proxy or in multiple replicas.
 - **Cookies & CSRF**: if refresh tokens ever move into cookies — `httpOnly` + `SameSite` + CSRF protection in the same change.
-- **CI automation** for `npm audit`, lint and tests once a pipeline exists.
 
 Backlog — next level of protection:
 

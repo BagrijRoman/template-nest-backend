@@ -1,0 +1,49 @@
+# Every push and PR runs the same gate a release requires: lint, formatting, dependency audit
+# (high+ blocks, per SECURITY.md), unit tests, and e2e against an in-memory MongoDB.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      # Placeholder only: the e2e setup replaces it with a mongodb-memory-server URI before the
+      # app loads; env validation just needs a well-formed value at import time.
+      MONGODB_URI: mongodb://127.0.0.1:27017/ci-placeholder
+      # CI-only dummies (32+ chars, distinct) — never real secrets; tests sign tokens with these.
+      JWT_ACCESS_SECRET: ci-only-access-secret-0123456789abcdef
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-0123456789abcdef
+      JWT_REFRESH_TTL: 30d
+      # Tests must never call the external haveibeenpwned API.
+      BREACHED_PASSWORD_CHECK: disabled
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The mongod binary mongodb-memory-server downloads (~100MB) — cached between runs.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run format:check
+
+      - run: npm audit --audit-level=high
+
+      - run: npm test
+
+      - run: npm run test:e2e
