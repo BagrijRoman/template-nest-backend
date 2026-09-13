@@ -3,6 +3,12 @@
 NestJS 12 starter template. TypeScript (strict), native ESM, Vitest, oxlint, Prettier, class-validator.
 These rules are binding for any assistant or contributor working in this repo.
 
+## Feature worklog
+
+- `WORKLOG.md` is the atomic feature list used for project estimation (same format as the web template). Every feature or meaningful change updates it **in the same commit**: implemented work moves into "Implemented", planned work lives in "Not implemented (future scope)"; the list must never lag behind the code.
+- One estimable unit per row: when a portion delivers several mechanisms, each gets its own row.
+- Tests are work and get rows of their own: every feature with tests is followed by a `Backend App: Tests: <feature>` row naming the test type (unit / e2e) and what it covers. Test infrastructure has its own rows too.
+
 ## Commands
 
 - `npm run start:dev` — dev server with watch
