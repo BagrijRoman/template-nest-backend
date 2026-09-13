@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { BadRequestException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ErrorCode } from '../common/errors/index.js';
 import { MailService } from '../common/mail/mail.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
@@ -72,16 +72,20 @@ describe('EmailVerificationService', () => {
 
   it('rejects unknown and expired tokens with the same generic 400', async () => {
     emailVerificationTokenModel.findOneAndDelete.mockReturnValue(withLean(null));
-    await expect(service.verify('forged')).rejects.toThrow(
-      new BadRequestException('Invalid or expired verification token'),
-    );
+    await expect(service.verify('forged')).rejects.toMatchObject({
+      code: ErrorCode.InvalidVerificationToken,
+      message: 'Invalid or expired verification token',
+      details: [{ field: 'token' }],
+    });
 
     emailVerificationTokenModel.findOneAndDelete.mockReturnValue(
       withLean({ userId: USER.id, expiresAt: new Date(Date.now() - 1000) }),
     );
-    await expect(service.verify('stale')).rejects.toThrow(
-      new BadRequestException('Invalid or expired verification token'),
-    );
+    await expect(service.verify('stale')).rejects.toMatchObject({
+      code: ErrorCode.InvalidVerificationToken,
+      message: 'Invalid or expired verification token',
+      details: [{ field: 'token' }],
+    });
     expect(usersService.markEmailVerified).not.toHaveBeenCalled();
   });
 

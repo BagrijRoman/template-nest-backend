@@ -1,4 +1,5 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { ErrorCode, rateLimitedException } from '../common/errors/index.js';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, trusted } from 'mongoose';
 import { MailService } from '../common/mail/mail.service.js';
@@ -8,6 +9,7 @@ import { MAX_FAILED_SIGN_IN_ATTEMPTS, SIGN_IN_LOCKOUT_WINDOW_MS } from './auth.c
 import { SignInAttempt } from './entities/index.js';
 
 const LOCKED_MESSAGE = 'Too many failed sign-in attempts, try again later';
+const MS_PER_SECOND = 1000;
 
 /**
  * Per-account complement to the per-IP throttler: IP limits alone do not stop a distributed
@@ -29,7 +31,8 @@ export class SignInLockoutService {
     const isLocked =
       attempt !== null && attempt.failedCount >= MAX_FAILED_SIGN_IN_ATTEMPTS && attempt.expiresAt > new Date();
     if (isLocked) {
-      throw new HttpException(LOCKED_MESSAGE, HttpStatus.TOO_MANY_REQUESTS);
+      const retryAfterSeconds = Math.ceil((attempt.expiresAt.getTime() - Date.now()) / MS_PER_SECOND);
+      throw rateLimitedException(ErrorCode.AccountLocked, LOCKED_MESSAGE, retryAfterSeconds);
     }
   }
 

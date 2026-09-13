@@ -137,8 +137,10 @@ describe('Password reset flow (e2e)', () => {
       token: latestMailedToken(),
       newPassword: 'weak',
     }).expect(400);
-    expect(weak.body.details).toContain(
-      'newPassword must be at least 8 characters long',
+    expect(weak.body.details).toContainEqual(
+      expect.objectContaining({
+        message: 'newPassword must be at least 8 characters long',
+      }),
     );
   });
 });

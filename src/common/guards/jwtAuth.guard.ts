@@ -1,4 +1,5 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { unauthenticatedException } from '../errors/index.js';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { TokensService } from '../../auth/tokens.service.js';
@@ -39,8 +40,7 @@ export class JwtAuthGuard implements CanActivate {
     const token = extractBearerToken(request);
     const payload = token ? await this.tokensService.verifyAccessToken(token) : null;
     if (!payload) {
-      // Missing, malformed, expired and forged tokens are indistinguishable to the caller.
-      throw new UnauthorizedException('Invalid or missing access token');
+      throw unauthenticatedException();
     }
 
     request.user = { id: payload.sub };

@@ -43,6 +43,8 @@ describe('Breached password rejection (e2e)', () => {
     expect(response.body).toMatchObject({
       statusCode: 400,
       error: 'Bad Request',
+      code: 'BREACHED_PASSWORD',
+      details: [{ field: 'password', rule: 'notBreached' }],
       message:
         'This password has appeared in a known data breach — please choose a different one',
       path: '/auth/sign-up',

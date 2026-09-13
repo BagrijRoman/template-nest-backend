@@ -81,6 +81,7 @@ describe('POST /auth/sign-in (e2e)', () => {
     );
 
     expect(unknownEmail.body.message).toBe('Invalid email or password');
+    expect(unknownEmail.body.code).toBe('INVALID_CREDENTIALS');
     // Identical bodies except the timestamp: nothing distinguishes the two failure causes.
     const withoutTimestamp = ({
       timestamp: _timestamp,
@@ -101,8 +102,17 @@ describe('POST /auth/sign-in (e2e)', () => {
     expect(response.body).toMatchObject({
       statusCode: 400,
       error: 'Bad Request',
+      code: 'VALIDATION_FAILED',
       message: 'Validation failed',
       path: '/auth/sign-in',
     });
+    expect(response.body.details).toContainEqual({
+      field: 'email',
+      rule: 'isEmail',
+      message: 'email must be a valid email address',
+    });
+    expect(response.body.details).toContainEqual(
+      expect.objectContaining({ field: 'password' }),
+    );
   });
 });

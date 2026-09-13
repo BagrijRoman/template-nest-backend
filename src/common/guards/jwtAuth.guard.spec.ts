@@ -1,4 +1,5 @@
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext } from '@nestjs/common';
+import { AppException, ErrorCode } from '../errors/index.js';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -66,7 +67,7 @@ describe('JwtAuthGuard', () => {
     const { context } = buildContext(authorization);
 
     await expect(guard.canActivate(context)).rejects.toThrow(
-      new UnauthorizedException('Invalid or missing access token'),
+      new AppException(401, ErrorCode.Unauthenticated, 'Invalid or missing access token'),
     );
   });
 });

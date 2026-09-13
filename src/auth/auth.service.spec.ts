@@ -1,4 +1,5 @@
-import { BadRequestException, HttpException, UnauthorizedException } from '@nestjs/common';
+import { HttpException } from '@nestjs/common';
+import { AppException, ErrorCode } from '../common/errors/index.js';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsersService } from '../users/users.service.js';
@@ -92,7 +93,7 @@ describe('AuthService', () => {
     usersService.verifyPassword.mockResolvedValue(null);
 
     await expect(service.signIn({ email: USER.email, password: 'Wrong123' })).rejects.toThrow(
-      new UnauthorizedException('Invalid email or password'),
+      new AppException(401, ErrorCode.InvalidCredentials, 'Invalid email or password'),
     );
     expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
     expect(signInLockoutService.reset).not.toHaveBeenCalled();
@@ -135,7 +136,7 @@ describe('AuthService', () => {
     refreshTokensService.consume.mockResolvedValue(null);
 
     await expect(service.refresh({ refreshToken: 'dead.refresh.jwt' })).rejects.toThrow(
-      new UnauthorizedException('Invalid refresh token'),
+      new AppException(401, ErrorCode.InvalidRefreshToken, 'Invalid refresh token'),
     );
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
   });
@@ -145,7 +146,7 @@ describe('AuthService', () => {
     usersService.findById.mockResolvedValue(null);
 
     await expect(service.refresh({ refreshToken: 'orphaned.refresh.jwt' })).rejects.toThrow(
-      new UnauthorizedException('Invalid refresh token'),
+      new AppException(401, ErrorCode.InvalidRefreshToken, 'Invalid refresh token'),
     );
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
   });
@@ -172,7 +173,11 @@ describe('AuthService', () => {
 
     await expect(
       service.changePassword(USER.id, { currentPassword: 'Wrong1234', newPassword: 'NewSecret123' }),
-    ).rejects.toThrow(new BadRequestException('Current password is incorrect'));
+    ).rejects.toMatchObject({
+      code: ErrorCode.WrongCurrentPassword,
+      message: 'Current password is incorrect',
+      details: [{ field: 'currentPassword' }],
+    });
     expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
     expect(refreshTokensService.revokeAllForUser).not.toHaveBeenCalled();
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();

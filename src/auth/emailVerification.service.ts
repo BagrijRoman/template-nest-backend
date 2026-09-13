@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppException, ErrorCode, rateLimitedException, unauthenticatedException } from '../common/errors/index.js';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MailService } from '../common/mail/mail.service.js';
@@ -13,6 +14,16 @@ import { EmailVerificationToken } from './entities/index.js';
 const VERIFICATION_TOKEN_BYTES = 32;
 const VERIFICATION_EMAIL_ACTION = 'verification-email';
 const INVALID_TOKEN_MESSAGE = 'Invalid or expired verification token';
+const MS_PER_SECOND = 1000;
+
+const invalidTokenException = (): AppException =>
+  AppException.forField(
+    HttpStatus.BAD_REQUEST,
+    ErrorCode.InvalidVerificationToken,
+    'token',
+    'validToken',
+    INVALID_TOKEN_MESSAGE,
+  );
 const MS_PER_HOUR = 3_600_000;
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
@@ -36,10 +47,10 @@ export class EmailVerificationService {
   async requestVerification(userId: string): Promise<void> {
     const user = await this.usersService.findById(userId);
     if (!user) {
-      throw new UnauthorizedException('Invalid or missing access token');
+      throw unauthenticatedException();
     }
     if (user.emailVerified) {
-      throw new BadRequestException('Email is already verified');
+      throw new AppException(HttpStatus.BAD_REQUEST, ErrorCode.EmailAlreadyVerified, 'Email is already verified');
     }
 
     const isAllowed = await this.accountRateLimit.consume(
@@ -49,7 +60,11 @@ export class EmailVerificationService {
       EMAIL_ACTION_WINDOW_MS,
     );
     if (!isAllowed) {
-      throw new HttpException('Too many verification emails requested, try again later', HttpStatus.TOO_MANY_REQUESTS);
+      throw rateLimitedException(
+        ErrorCode.RateLimited,
+        'Too many verification emails requested, try again later',
+        EMAIL_ACTION_WINDOW_MS / MS_PER_SECOND,
+      );
     }
 
     await this.sendVerification(user);
@@ -83,12 +98,12 @@ export class EmailVerificationService {
   async verify(token: string): Promise<void> {
     const record = await this.emailVerificationTokenModel.findOneAndDelete({ tokenHash: hashToken(token) }).lean();
     if (!record || record.expiresAt <= new Date()) {
-      throw new BadRequestException(INVALID_TOKEN_MESSAGE);
+      throw invalidTokenException();
     }
 
     const user = await this.usersService.markEmailVerified(record.userId);
     if (!user) {
-      throw new BadRequestException(INVALID_TOKEN_MESSAGE);
+      throw invalidTokenException();
     }
 
     this.securityEvents.record(SecurityEvent.EmailVerified, { userId: user.id });

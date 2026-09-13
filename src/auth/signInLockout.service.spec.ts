@@ -1,6 +1,7 @@
 import { HttpException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ErrorCode } from '../common/errors/index.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_FAILED_SIGN_IN_ATTEMPTS } from './auth.constants.js';
 import { MailService } from '../common/mail/mail.service.js';
@@ -67,6 +68,10 @@ describe('SignInLockoutService', () => {
 
     await expect(service.assertNotLocked(EMAIL)).rejects.toThrow(HttpException);
     await expect(service.assertNotLocked(EMAIL)).rejects.toThrow('Too many failed sign-in attempts, try again later');
+    await expect(service.assertNotLocked(EMAIL)).rejects.toMatchObject({
+      code: ErrorCode.AccountLocked,
+      meta: { retryAfterSeconds: expect.any(Number) },
+    });
   });
 
   it('treats a logically expired record as absent even before TTL purges it', async () => {

@@ -1,8 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ErrorCode } from '../common/errors/index.js';
 import { SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { BreachedPasswordsService } from './breachedPasswords.service.js';
 import { User } from './entities/index.js';
@@ -106,7 +106,7 @@ describe('UsersService', () => {
 
     await expect(
       service.create({ email: 'jane@example.com', firstName: 'Jane', lastName: 'Doe', password: 'secret123' }),
-    ).rejects.toThrow(ConflictException);
+    ).rejects.toMatchObject({ code: ErrorCode.EmailTaken, details: [{ field: 'email', rule: 'unique' }] });
     expect(userModel.create).not.toHaveBeenCalled();
   });
 
@@ -115,7 +115,7 @@ describe('UsersService', () => {
 
     await expect(
       service.create({ email: 'jane@example.com', firstName: 'Jane', lastName: 'Doe', password: 'secret123' }),
-    ).rejects.toThrow(ConflictException);
+    ).rejects.toMatchObject({ code: ErrorCode.EmailTaken, details: [{ field: 'email', rule: 'unique' }] });
   });
 
   it('verifies correct credentials and rejects wrong ones', async () => {
@@ -151,7 +151,7 @@ describe('UsersService', () => {
 
     await expect(
       service.create({ email: 'jane@example.com', firstName: 'Jane', lastName: 'Doe', password: 'secret123' }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toMatchObject({ code: ErrorCode.BreachedPassword });
     expect(userModel.create).not.toHaveBeenCalled();
   });
 
@@ -160,9 +160,10 @@ describe('UsersService', () => {
     userModel.findById.mockReturnValue(withLean(doc));
     breachedPasswordsService.isBreached.mockResolvedValue(true);
 
-    await expect(service.updatePassword(doc._id.toString(), 'secret123', 'Breached123')).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(service.updatePassword(doc._id.toString(), 'secret123', 'Breached123')).rejects.toMatchObject({
+      code: ErrorCode.BreachedPassword,
+      details: [{ field: 'newPassword' }],
+    });
     expect(userModel.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 

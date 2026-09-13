@@ -11,6 +11,7 @@ These rules are binding for any assistant or contributor working in this repo.
 - `npm run format:check` — Prettier check (no writes)
 
 A husky + lint-staged pre-commit hook (`.husky/pre-commit`, activated by the `prepare` script on `npm install`) must stay set up: it runs lint-staged over the staged `src/`/`test/` TypeScript files — oxlint blocks the commit on errors, Prettier auto-formats and re-stages. Never bypass it with `--no-verify`; fix the reported problems instead.
+
 - `npm run migrate:up` / `migrate:down` / `migrate:status` / `migrate:create <name>` — migrate-mongo against `MONGODB_URI` (config in `migrate-mongo-config.js`, migrations in `migrations/`)
 - `npm test` — unit tests (Vitest)
 - `npm run test:e2e` — e2e tests (Vitest + supertest, `vitest.config.e2e.ts`)
@@ -37,20 +38,25 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 - The Swagger setup in `main.ts` (UI at `/docs`, served outside production) must stay wired; never remove or disable it.
 - No endpoint ships undocumented: every controller method carries `@ApiOperation` plus the response decorators for each status it can return (`@ApiCreatedResponse`, `@ApiNotFoundResponse`, `@ApiConflictResponse`, …), and every DTO property carries `@ApiProperty`/`@ApiPropertyOptional` with formats and examples where they help.
 - Documentation is generated from code, not written by hand — decorators live next to the endpoints and DTOs they describe, so the docs cannot drift; when an endpoint's behavior changes (status codes, response shape, params), its decorators are updated in the same change.
-- Error responses follow the shared `ErrorResponseBody` shape — document error statuses against it, don't invent per-endpoint error schemas.
+- Error responses follow the shared `ErrorResponseDto` shape — every error decorator passes `type: ErrorResponseDto`; don't invent per-endpoint error schemas.
 
 ## Validation
 
 - Every request body/query is a dedicated DTO class with class-validator decorators. No `any` in controller signatures.
-- The global `ValidationPipe` (`whitelist: true`, `transform: true`) is registered in `AppModule` — unknown fields are stripped; rely on it instead of manual validation in controllers.
+- The global `ValidationPipe` (`whitelist: true`, `transform: true`, `exceptionFactory: validationExceptionFactory`) is registered in `AppModule` — unknown fields are stripped and every failed rule becomes a `{ field, rule, message }` entry in the error's `details`; rely on it instead of manual validation in controllers.
 - Partial updates use `PartialType(CreateDto)` (see `UpdateUserDto`).
 
 ## Error handling
 
-- All client-facing errors are normalized by `AllExceptionsFilter` (`src/common/filters/allExceptions.filter.ts`) to the `ErrorResponseBody` shape: `{ statusCode, error, message, details?, timestamp, path }`. Do not invent other error shapes.
-- Throw built-in `HttpException` subclasses (`NotFoundException`, `ConflictException`, …) with human-readable messages, pattern: `User with id "..." not found`.
-- Unexpected errors are logged with a full stack server-side and returned to the client as a generic 500 — never leak stack traces, database queries, or internals.
+- All client-facing errors are normalized by `AllExceptionsFilter` (`src/common/filters/allExceptions.filter.ts`) to the `ErrorResponseBody` shape (`src/common/errors/errorResponse.dto.ts`): `{ statusCode, error, code, message, details?, meta?, timestamp, path }`. Do not invent other error shapes.
+  - `code` is a stable machine-readable value from the `ErrorCode` enum (`src/common/errors/errorCode.ts`) — the thing clients branch on. Messages may be reworded; a code never changes meaning and is never reused. Add a code to the enum before throwing it.
+  - `details` is a list of `{ field, rule, message }` — one entry per failed rule on an input field. Validation errors always carry it (the global `ValidationPipe` uses `validationExceptionFactory`); business errors tied to one field carry it too (`EMAIL_TAKEN` → `email`, `WRONG_CURRENT_PASSWORD` → `currentPassword`, `BREACHED_PASSWORD` → `password`/`newPassword`).
+  - `meta` holds extra machine-readable context specific to the code, e.g. `retryAfterSeconds` on every 429 (the filter copies the throttler's `Retry-After` header there; lockout and per-account caps set it explicitly).
+- Throw domain errors as `AppException(status, ErrorCode, message, { details?, meta? })` from `src/common/errors/`; use `AppException.forField(...)` for a single field-bound error and the shared helpers (`unauthenticatedException()`, `rateLimitedException(...)`) where they exist. Plain Nest exceptions (`NotFoundException`, …) are still accepted and get a status-derived code (`NOT_FOUND`, `CONFLICT`, …) — fine for generic cases, never for anything a client needs to distinguish.
+- Messages stay human-readable and safe to show verbatim, pattern: `User with id "..." not found`. Anti-enumeration rules still apply: identical status, code and message for "unknown email" and "wrong password".
+- Unexpected errors are logged with a full stack server-side and returned to the client as a generic 500 (`INTERNAL_ERROR`) — never leak stack traces, database queries, or internals.
 - Never swallow errors: handle them meaningfully or let them propagate to the filter.
+- Swagger: every error response decorator references `ErrorResponseDto` (`@ApiBadRequestResponse({ type: ErrorResponseDto, description: ... })`), so the contract is visible in `/docs`.
 
 ## Configuration & secrets
 
@@ -141,7 +147,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 
 **Comments**
 
-- A comment explains *why*, not *what* — the code already says what it does.
+- A comment explains _why_, not _what_ — the code already says what it does.
 - JSDoc only for non-obvious public utilities (see `password.util.ts`).
 
 ## Standard choices (fixed decisions for future additions)

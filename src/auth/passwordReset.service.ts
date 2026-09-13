@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppException, ErrorCode } from '../common/errors/index.js';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MailService } from '../common/mail/mail.service.js';
@@ -13,6 +14,15 @@ import { RefreshTokensService } from './refreshTokens.service.js';
 const RESET_TOKEN_BYTES = 32;
 const PASSWORD_RESET_EMAIL_ACTION = 'password-reset-email';
 const INVALID_TOKEN_MESSAGE = 'Invalid or expired reset token';
+
+const invalidTokenException = (): AppException =>
+  AppException.forField(
+    HttpStatus.BAD_REQUEST,
+    ErrorCode.InvalidResetToken,
+    'token',
+    'validToken',
+    INVALID_TOKEN_MESSAGE,
+  );
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
@@ -78,13 +88,13 @@ export class PasswordResetService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const record = await this.passwordResetTokenModel.findOneAndDelete({ tokenHash: hashToken(token) }).lean();
     if (!record || record.expiresAt <= new Date()) {
-      throw new BadRequestException(INVALID_TOKEN_MESSAGE);
+      throw invalidTokenException();
     }
 
     const user = await this.usersService.replacePassword(record.userId, newPassword);
     if (!user) {
       // The account vanished after the token was issued; the token is already consumed.
-      throw new BadRequestException(INVALID_TOKEN_MESSAGE);
+      throw invalidTokenException();
     }
 
     await this.refreshTokensService.revokeAllForUser(user.id);

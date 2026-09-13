@@ -11,6 +11,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { BURST_THROTTLE_LIMIT, BURST_THROTTLE_TTL_MS, THROTTLE_LIMIT, THROTTLE_TTL_MS } from './common/constants.js';
+import { validationExceptionFactory } from './common/errors/index.js';
 import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
 import { JwtAuthGuard } from './common/guards/jwtAuth.guard.js';
 import { HealthModule } from './health/health.module.js';
@@ -92,7 +93,7 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
     AppService,
     {
       provide: APP_PIPE,
-      useValue: new ValidationPipe({ whitelist: true, transform: true }),
+      useValue: new ValidationPipe({ whitelist: true, transform: true, exceptionFactory: validationExceptionFactory }),
     },
     {
       provide: APP_FILTER,

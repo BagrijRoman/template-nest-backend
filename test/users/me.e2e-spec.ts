@@ -75,6 +75,7 @@ describe('GET /users/me (e2e)', () => {
       expect(response.body).toMatchObject({
         statusCode: 401,
         error: 'Unauthorized',
+        code: 'UNAUTHENTICATED',
         message: 'Invalid or missing access token',
         path: '/users/me',
       });

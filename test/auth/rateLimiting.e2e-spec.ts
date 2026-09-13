@@ -40,6 +40,8 @@ describe('Auth rate limiting (e2e)', () => {
 
     expect(response.body).toMatchObject({
       statusCode: 429,
+      code: 'RATE_LIMITED',
+      meta: { retryAfterSeconds: expect.any(Number) },
       path: '/auth/sign-in',
     });
     expect(response.body.timestamp).toBeDefined();

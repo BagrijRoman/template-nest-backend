@@ -55,7 +55,9 @@ describe('Sign-in lockout (e2e)', () => {
 
     expect(response.body).toMatchObject({
       statusCode: 429,
+      code: 'ACCOUNT_LOCKED',
       message: 'Too many failed sign-in attempts, try again later',
+      meta: { retryAfterSeconds: expect.any(Number) },
       path: '/auth/sign-in',
     });
   });

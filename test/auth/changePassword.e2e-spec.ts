@@ -95,6 +95,14 @@ describe('POST /auth/change-password (e2e)', () => {
     }).expect(400);
 
     expect(response.body.message).toBe('Current password is incorrect');
+    expect(response.body.code).toBe('WRONG_CURRENT_PASSWORD');
+    expect(response.body.details).toEqual([
+      {
+        field: 'currentPassword',
+        rule: 'matchesCurrentPassword',
+        message: 'Current password is incorrect',
+      },
+    ]);
     await request(app.getHttpServer())
       .post('/auth/refresh')
       .send({ refreshToken })
@@ -128,8 +136,10 @@ describe('POST /auth/change-password (e2e)', () => {
     }).expect(400);
 
     expect(response.body.message).toBe('Validation failed');
-    expect(response.body.details).toContain(
-      'newPassword must be at least 8 characters long',
+    expect(response.body.details).toContainEqual(
+      expect.objectContaining({
+        message: 'newPassword must be at least 8 characters long',
+      }),
     );
   });
 });

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppException, ErrorCode, unauthenticatedException } from '../common/errors/index.js';
 import type { SafeUser } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthResponseDto, ChangePasswordDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
@@ -13,6 +14,7 @@ import { TokensService } from './tokens.service.js';
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password';
 // One generic message for expired, revoked, already-used and forged tokens alike.
 const INVALID_REFRESH_TOKEN_MESSAGE = 'Invalid refresh token';
+const WRONG_CURRENT_PASSWORD_MESSAGE = 'Current password is incorrect';
 
 @Injectable()
 export class AuthService {
@@ -39,7 +41,7 @@ export class AuthService {
     if (!user) {
       await this.signInLockoutService.recordFailure(signInDto.email);
       this.securityEvents.record(SecurityEvent.SignInFailed, { email: signInDto.email });
-      throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
+      throw new AppException(HttpStatus.UNAUTHORIZED, ErrorCode.InvalidCredentials, INVALID_CREDENTIALS_MESSAGE);
     }
 
     await this.signInLockoutService.reset(signInDto.email);
@@ -51,13 +53,13 @@ export class AuthService {
   async refresh(refreshTokenDto: RefreshTokenDto): Promise<AuthResponseDto> {
     const consumed = await this.refreshTokensService.consume(refreshTokenDto.refreshToken);
     if (!consumed) {
-      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+      throw new AppException(HttpStatus.UNAUTHORIZED, ErrorCode.InvalidRefreshToken, INVALID_REFRESH_TOKEN_MESSAGE);
     }
 
     const user = await this.usersService.findById(consumed.userId);
     if (!user) {
       // The account is gone; the token has already been consumed, so nothing is left to revoke.
-      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+      throw new AppException(HttpStatus.UNAUTHORIZED, ErrorCode.InvalidRefreshToken, INVALID_REFRESH_TOKEN_MESSAGE);
     }
 
     this.securityEvents.record(SecurityEvent.TokenRefreshed, { userId: user.id, familyId: consumed.familyId });
@@ -85,7 +87,7 @@ export class AuthService {
   async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<AuthResponseDto> {
     const user = await this.usersService.findById(userId);
     if (!user) {
-      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+      throw unauthenticatedException();
     }
 
     await this.signInLockoutService.assertNotLocked(user.email);
@@ -99,7 +101,13 @@ export class AuthService {
       await this.signInLockoutService.recordFailure(user.email);
       this.securityEvents.record(SecurityEvent.PasswordChangeRejected, { userId });
       // 400, not 401: a 401 would make clients treat the access token as dead and force a logout.
-      throw new BadRequestException('Current password is incorrect');
+      throw AppException.forField(
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.WrongCurrentPassword,
+        'currentPassword',
+        'matchesCurrentPassword',
+        WRONG_CURRENT_PASSWORD_MESSAGE,
+      );
     }
 
     await this.signInLockoutService.reset(user.email);

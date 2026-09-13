@@ -79,7 +79,9 @@ describe('POST /auth/sign-up (e2e)', () => {
     expect(response.body).toMatchObject({
       statusCode: 409,
       error: 'Conflict',
+      code: 'EMAIL_TAKEN',
       message: `User with email "${email}" already exists`,
+      details: [{ field: 'email', rule: 'unique' }],
       path: '/auth/sign-up',
     });
     expect(response.body.timestamp).toBeDefined();
@@ -123,8 +125,10 @@ describe('POST /auth/sign-up (e2e)', () => {
       message: 'Validation failed',
       path: '/auth/sign-up',
     });
-    expect(response.body.details).toContain(
-      'email must be a valid email address',
+    expect(response.body.details).toContainEqual(
+      expect.objectContaining({
+        message: 'email must be a valid email address',
+      }),
     );
     expect(response.body.timestamp).toBeDefined();
   });
@@ -148,7 +152,9 @@ describe('POST /auth/sign-up (e2e)', () => {
       const response = await signUp({ ...validBody, password }).expect(400);
 
       expect(response.body.message).toBe('Validation failed');
-      expect(response.body.details).toContain(expectedError);
+      expect(response.body.details).toContainEqual(
+        expect.objectContaining({ message: expectedError }),
+      );
     },
   );
 
@@ -177,7 +183,9 @@ describe('POST /auth/sign-up (e2e)', () => {
     const response = await signUp({ ...validBody, ...override }).expect(400);
 
     expect(response.body.message).toBe('Validation failed');
-    expect(response.body.details).toContain(expectedError);
+    expect(response.body.details).toContainEqual(
+      expect.objectContaining({ message: expectedError }),
+    );
   });
 
   it.each([
@@ -201,7 +209,9 @@ describe('POST /auth/sign-up (e2e)', () => {
     const response = await signUp({ ...validBody, ...override }).expect(400);
 
     expect(response.body.message).toBe('Validation failed');
-    expect(response.body.details).toContain(expectedError);
+    expect(response.body.details).toContainEqual(
+      expect.objectContaining({ message: expectedError }),
+    );
   });
 
   it('strips unknown fields from the payload', async () => {

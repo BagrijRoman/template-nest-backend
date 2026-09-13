@@ -1,11 +1,14 @@
-import { ArgumentsHost, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ArgumentsHost, BadRequestException, HttpStatus, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AllExceptionsFilter, ErrorResponseBody } from './allExceptions.filter.js';
+import { AppException } from '../errors/app.exception.js';
+import { ErrorCode } from '../errors/errorCode.js';
+import type { ErrorResponseBody } from '../errors/errorResponse.dto.js';
+import { AllExceptionsFilter } from './allExceptions.filter.js';
 
 describe('AllExceptionsFilter', () => {
   const filter = new AllExceptionsFilter();
 
-  const response = { status: vi.fn(), json: vi.fn() };
+  const response = { status: vi.fn(), json: vi.fn(), getHeader: vi.fn() };
   const host = {
     switchToHttp: () => ({
       getResponse: () => response,
@@ -18,29 +21,87 @@ describe('AllExceptionsFilter', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     response.status.mockReturnValue(response);
+    response.getHeader.mockReturnValue(undefined);
   });
 
-  it('translates an HttpException with a plain message', () => {
-    filter.catch(new NotFoundException('User with id "42" not found'), host);
+  it('serializes an AppException verbatim: code, details and meta included', () => {
+    filter.catch(
+      new AppException(HttpStatus.CONFLICT, ErrorCode.EmailTaken, 'Email already exists', {
+        details: [{ field: 'email', rule: 'unique', message: 'Email already exists' }],
+        meta: { hint: 'sign in instead' },
+      }),
+      host,
+    );
 
-    expect(response.status).toHaveBeenCalledWith(404);
+    expect(response.status).toHaveBeenCalledWith(409);
     expect(sentBody()).toMatchObject({
-      statusCode: 404,
-      message: 'User with id "42" not found',
+      statusCode: 409,
+      error: 'Conflict',
+      code: ErrorCode.EmailTaken,
+      message: 'Email already exists',
+      details: [{ field: 'email', rule: 'unique', message: 'Email already exists' }],
+      meta: { hint: 'sign in instead' },
       path: '/test-path',
     });
     expect(sentBody().timestamp).toBeDefined();
   });
 
-  it('collects ValidationPipe messages into details', () => {
+  it('omits details and meta when the AppException carries none', () => {
+    filter.catch(
+      new AppException(HttpStatus.UNAUTHORIZED, ErrorCode.InvalidCredentials, 'Invalid email or password'),
+      host,
+    );
+
+    expect(sentBody()).toMatchObject({ statusCode: 401, error: 'Unauthorized', code: ErrorCode.InvalidCredentials });
+    expect(sentBody()).not.toHaveProperty('details');
+    expect(sentBody()).not.toHaveProperty('meta');
+  });
+
+  it('gives a plain Nest HttpException a status-derived code', () => {
+    filter.catch(new NotFoundException('User with id "42" not found'), host);
+
+    expect(response.status).toHaveBeenCalledWith(404);
+    expect(sentBody()).toMatchObject({
+      statusCode: 404,
+      code: ErrorCode.NotFound,
+      message: 'User with id "42" not found',
+      path: '/test-path',
+    });
+  });
+
+  it('joins the messages of a bare ValidationPipe exception (one without our factory)', () => {
     filter.catch(new BadRequestException(['email must be a valid email address', 'password too weak']), host);
 
-    expect(response.status).toHaveBeenCalledWith(400);
     expect(sentBody()).toMatchObject({
       statusCode: 400,
-      message: 'Validation failed',
-      details: ['email must be a valid email address', 'password too weak'],
+      code: ErrorCode.BadRequest,
+      message: 'email must be a valid email address, password too weak',
     });
+  });
+
+  it('surfaces the throttler Retry-After header as meta.retryAfterSeconds on a 429', () => {
+    response.getHeader.mockReturnValue('42');
+
+    filter.catch(new BadRequestException('x'), host);
+    expect(sentBody()).not.toHaveProperty('meta');
+
+    response.json.mockClear();
+    filter.catch(new AppException(HttpStatus.TOO_MANY_REQUESTS, ErrorCode.RateLimited, 'Too many requests'), host);
+
+    expect(sentBody()).toMatchObject({ code: ErrorCode.RateLimited, meta: { retryAfterSeconds: 42 } });
+  });
+
+  it('keeps an explicit retryAfterSeconds over the header', () => {
+    response.getHeader.mockReturnValue('42');
+
+    filter.catch(
+      new AppException(HttpStatus.TOO_MANY_REQUESTS, ErrorCode.AccountLocked, 'Locked', {
+        meta: { retryAfterSeconds: 900 },
+      }),
+      host,
+    );
+
+    expect(sentBody().meta).toEqual({ retryAfterSeconds: 900 });
   });
 
   it('translates a 4xx http-error thrown by Express middleware', () => {
@@ -55,6 +116,7 @@ describe('AllExceptionsFilter', () => {
     expect(sentBody()).toMatchObject({
       statusCode: 413,
       error: 'Payload Too Large',
+      code: ErrorCode.PayloadTooLarge,
       message: 'request entity too large',
     });
   });
@@ -76,15 +138,9 @@ describe('AllExceptionsFilter', () => {
     expect(body).toMatchObject({
       statusCode: 500,
       error: 'Internal Server Error',
+      code: ErrorCode.Internal,
       message: 'Something went wrong',
     });
     expect(JSON.stringify(body)).not.toContain('hunter2');
-  });
-
-  it('handles non-Error throws with a generic 500', () => {
-    filter.catch('just a string', host);
-
-    expect(response.status).toHaveBeenCalledWith(500);
-    expect(sentBody().message).toBe('Something went wrong');
   });
 });

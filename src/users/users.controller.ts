@@ -1,4 +1,6 @@
-import { Controller, Get, UnauthorizedException } from '@nestjs/common';
+import { ErrorResponseDto } from '../common/errors/index.js';
+import { Controller, Get } from '@nestjs/common';
+import { unauthenticatedException } from '../common/errors/index.js';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -15,7 +17,7 @@ import { UsersService } from './users.service.js';
 
 @ApiTags('users')
 @ApiBearerAuth()
-@ApiTooManyRequestsResponse({ description: 'Rate limit exceeded' })
+@ApiTooManyRequestsResponse({ type: ErrorResponseDto, description: 'Rate limit exceeded' })
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -23,12 +25,12 @@ export class UsersController {
   @Get('me')
   @ApiOperation({ summary: 'Get the authenticated user' })
   @ApiOkResponse({ type: UserResponseDto })
-  @ApiUnauthorizedResponse({ description: 'Invalid or missing access token' })
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'Invalid or missing access token' })
   async getMe(@CurrentUser() currentUser: AuthenticatedUser): Promise<SafeUser> {
     const user = await this.usersService.findById(currentUser.id);
     if (!user) {
       // The account vanished while its access token was still valid — force a re-auth, not a 404.
-      throw new UnauthorizedException('Invalid or missing access token');
+      throw unauthenticatedException();
     }
     return user;
   }

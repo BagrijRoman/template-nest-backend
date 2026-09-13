@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppException, ErrorCode } from '../common/errors/index.js';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
@@ -16,8 +17,23 @@ type LeanUser = User & { _id: Types.ObjectId };
 const isDuplicateKeyError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: number }).code === MONGO_DUPLICATE_KEY_ERROR_CODE;
 
-const duplicateEmailException = (email: string): ConflictException =>
-  new ConflictException(`User with email "${email}" already exists`);
+const duplicateEmailException = (email: string): AppException =>
+  AppException.forField(
+    HttpStatus.CONFLICT,
+    ErrorCode.EmailTaken,
+    'email',
+    'unique',
+    `User with email "${email}" already exists`,
+  );
+
+const breachedPasswordException = (field: string): AppException =>
+  AppException.forField(
+    HttpStatus.BAD_REQUEST,
+    ErrorCode.BreachedPassword,
+    field,
+    'notBreached',
+    BREACHED_PASSWORD_MESSAGE,
+  );
 
 @Injectable()
 export class UsersService {
@@ -35,7 +51,7 @@ export class UsersService {
 
     if (await this.breachedPasswordsService.isBreached(createUserDto.password)) {
       this.securityEvents.record(SecurityEvent.BreachedPasswordRejected, { email: createUserDto.email });
-      throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
+      throw breachedPasswordException('password');
     }
 
     try {
@@ -105,7 +121,7 @@ export class UsersService {
 
     if (await this.breachedPasswordsService.isBreached(newPassword)) {
       this.securityEvents.record(SecurityEvent.BreachedPasswordRejected, { userId: id });
-      throw new BadRequestException(BREACHED_PASSWORD_MESSAGE);
+      throw breachedPasswordException('newPassword');
     }
 
     const updated = await this.userModel

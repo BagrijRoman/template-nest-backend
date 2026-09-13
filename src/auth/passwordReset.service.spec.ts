@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { BadRequestException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ErrorCode } from '../common/errors/index.js';
 import { MailService } from '../common/mail/mail.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
@@ -104,9 +104,11 @@ describe('PasswordResetService', () => {
   it('rejects an unknown token with a generic 400 and changes nothing', async () => {
     passwordResetTokenModel.findOneAndDelete.mockReturnValue(withLean(null));
 
-    await expect(service.resetPassword('forged', 'NewSecret123')).rejects.toThrow(
-      new BadRequestException('Invalid or expired reset token'),
-    );
+    await expect(service.resetPassword('forged', 'NewSecret123')).rejects.toMatchObject({
+      code: ErrorCode.InvalidResetToken,
+      message: 'Invalid or expired reset token',
+      details: [{ field: 'token' }],
+    });
     expect(usersService.replacePassword).not.toHaveBeenCalled();
     expect(refreshTokensService.revokeAllForUser).not.toHaveBeenCalled();
   });
@@ -114,9 +116,11 @@ describe('PasswordResetService', () => {
   it('rejects a logically expired token even before TTL purges it, with the same 400', async () => {
     passwordResetTokenModel.findOneAndDelete.mockReturnValue(withLean({ userId: USER.id, expiresAt: PAST }));
 
-    await expect(service.resetPassword('stale', 'NewSecret123')).rejects.toThrow(
-      new BadRequestException('Invalid or expired reset token'),
-    );
+    await expect(service.resetPassword('stale', 'NewSecret123')).rejects.toMatchObject({
+      code: ErrorCode.InvalidResetToken,
+      message: 'Invalid or expired reset token',
+      details: [{ field: 'token' }],
+    });
     expect(usersService.replacePassword).not.toHaveBeenCalled();
   });
 });
