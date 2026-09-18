@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Matches, Max, Min, MinLength, validateSync } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Matches, Max, Min, MinLength, validateSync } from 'class-validator';
 
 const JWT_SECRET_MIN_LENGTH = 32;
 const TTL_PATTERN = /^\d+(ms|s|m|h|d)$/;
@@ -73,6 +73,11 @@ export class EnvironmentVariables {
     message: 'CORS_ORIGINS must be a comma-separated list of http(s) origins',
   })
   CORS_ORIGINS?: string;
+
+  // Git commit the running build was made from — set at build/deploy time, reported by /health-check.
+  @IsOptional()
+  @IsString()
+  GIT_SHA?: string;
 }
 
 /** Fails fast at startup: an invalid or malformed variable aborts the boot with a readable message. */

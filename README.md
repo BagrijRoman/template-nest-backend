@@ -17,21 +17,24 @@ The security posture — everything implemented from the development standpoint 
 
 ## Health check
 
-`GET /health` reports service liveness and MongoDB connectivity — point load balancer, container orchestrator, or uptime monitor probes at it.
+`GET /health-check` reports service liveness, the running build and MongoDB connectivity — point load balancer, container orchestrator, or uptime monitor probes at it. The response shape matches the other Apiko backends.
 
-- **200 OK** — the service is up and the database connection is established:
+It always answers **200 OK**; read `status` to tell healthy from unhealthy:
 
-  ```json
-  {
-    "status": "ok",
-    "database": "up",
-    "uptime": 3600,
-    "timestamp": "2026-09-06T12:00:00.000Z"
-  }
-  ```
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "uptime": 3600,
+  "commit": "0c038234d9aca98fa3469178c7e7d8993beb7a3c",
+  "nodeEnv": "production",
+  "database": { "status": "connected", "readyState": 1 }
+}
+```
 
-  `uptime` is the process uptime in seconds; `timestamp` is the server time (ISO 8601, UTC).
-
-- **503 Service Unavailable** — the database connection is down; the body follows the API's standard error shape.
+- `status` — `"ok"`, or `"error"` when the MongoDB connection is not established (`database.status` then names the mongoose state — `disconnected`, `connecting`, `disconnecting` or `uninitialized` — next to its numeric `readyState`).
+- `uptime` — seconds since the service started; `timestamp` — server time (ISO 8601, UTC).
+- `commit` — the `GIT_SHA` the build was made from (`"unknown"` when unset), so you can confirm which code is live without shell access.
+- `nodeEnv` — `NODE_ENV`; production must report `"production"`.
 
 The endpoint requires no authentication and is also documented in Swagger UI at `/docs` (served outside production) under the `health` tag.

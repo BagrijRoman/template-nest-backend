@@ -36,7 +36,7 @@ describe('CORS whitelist (e2e)', () => {
 
   it('allows a whitelisted origin and permits credentials', async () => {
     const response = await request(app.getHttpServer())
-      .get('/health')
+      .get('/health-check')
       .set('Origin', ALLOWED_ORIGIN)
       .expect(200);
 
@@ -48,7 +48,7 @@ describe('CORS whitelist (e2e)', () => {
 
   it('sends no allow-origin header to an origin outside the whitelist', async () => {
     const response = await request(app.getHttpServer())
-      .get('/health')
+      .get('/health-check')
       .set('Origin', DISALLOWED_ORIGIN)
       .expect(200);
 
@@ -69,7 +69,7 @@ describe('CORS whitelist (e2e)', () => {
 
   it('serves requests without an Origin header as usual', async () => {
     const response = await request(app.getHttpServer())
-      .get('/health')
+      .get('/health-check')
       .expect(200);
 
     expect(response.headers['access-control-allow-origin']).toBeUndefined();

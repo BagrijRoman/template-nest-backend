@@ -49,7 +49,7 @@ describe('Auth rate limiting (e2e)', () => {
 
   it('does not rate limit the health endpoint', async () => {
     for (let attempt = 0; attempt < AUTH_THROTTLE_LIMIT + 5; attempt += 1) {
-      await request(app.getHttpServer()).get('/health').expect(200);
+      await request(app.getHttpServer()).get('/health-check').expect(200);
     }
   });
 });
