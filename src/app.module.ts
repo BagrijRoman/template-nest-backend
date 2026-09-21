@@ -1,0 +1,122 @@
+import { randomUUID } from 'node:crypto';
+import { Logger, MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
+import { MongooseModule } from '@nestjs/mongoose';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import helmet from 'helmet';
+import mongoose, { Connection, STATES } from 'mongoose';
+import { LoggerModule } from 'nestjs-pino';
+import { AppController } from './app.controller.js';
+import { AppService } from './app.service.js';
+import { AuthModule } from './auth/auth.module.js';
+import { BURST_THROTTLE_LIMIT, BURST_THROTTLE_TTL_MS, THROTTLE_LIMIT, THROTTLE_TTL_MS } from './common/constants.js';
+import { validationExceptionFactory } from './common/errors/index.js';
+import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
+import { JwtAuthGuard } from './common/guards/jwtAuth.guard.js';
+import { HealthModule } from './health/health.module.js';
+import { LogLevel, NodeEnv, validateEnv } from './config/env.validation.js';
+import { UsersModule } from './users/users.module.js';
+
+const MONGODB_SERVER_SELECTION_TIMEOUT_MS = 5000;
+const MONGODB_RETRY_ATTEMPTS = 3;
+const MONGODB_RETRY_DELAY_MS = 1000;
+
+// Defense in depth against NoSQL operator injection: $-operators in filter values are
+// neutralized even if a raw object ever slips past DTO validation. Only the global
+// setting works — mongoose silently ignores `sanitizeFilter` in connection options.
+mongoose.set('sanitizeFilter', true);
+
+/** Logs connection lifecycle; the initial state is logged explicitly because 'connected' fires before the factory runs. */
+const attachMongoConnectionLogging = (connection: Connection): Connection => {
+  const logger = new Logger('MongoDB');
+
+  connection.on('disconnected', () => logger.warn('MongoDB connection lost'));
+  connection.on('reconnected', () => logger.log('MongoDB connection restored'));
+  connection.on('error', (error: Error) => logger.error(`MongoDB connection error: ${error.message}`));
+
+  if (connection.readyState === STATES.connected) {
+    logger.log(`Connected to MongoDB (database "${connection.name}")`);
+  } else {
+    connection.on('connected', () => logger.log(`Connected to MongoDB (database "${connection.name}")`));
+  }
+
+  return connection;
+};
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const nodeEnv = config.getOrThrow<NodeEnv>('NODE_ENV');
+        return {
+          pinoHttp: {
+            level: config.get<LogLevel>('LOG_LEVEL') ?? (nodeEnv === NodeEnv.Test ? LogLevel.Silent : LogLevel.Info),
+            genReqId: (req) => {
+              const header = req.headers['x-request-id'];
+              return (Array.isArray(header) ? header[0] : header) ?? randomUUID();
+            },
+            redact: ['req.headers.authorization', 'req.headers.cookie'],
+            transport:
+              nodeEnv === NodeEnv.Development ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
+          },
+        };
+      },
+    }),
+    MongooseModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        uri: config.getOrThrow<string>('MONGODB_URI'),
+        // In production indexes come from migrate-mongo migrations only (npm run migrate:up);
+        // autoIndex stays on elsewhere so dev and tests need no migration step.
+        autoIndex: config.getOrThrow<NodeEnv>('NODE_ENV') !== NodeEnv.Production,
+        serverSelectionTimeoutMS: MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+        retryAttempts: MONGODB_RETRY_ATTEMPTS,
+        retryDelay: MONGODB_RETRY_DELAY_MS,
+        connectionFactory: attachMongoConnectionLogging,
+      }),
+    }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        { ttl: THROTTLE_TTL_MS, limit: THROTTLE_LIMIT },
+        { name: 'burst', ttl: BURST_THROTTLE_TTL_MS, limit: BURST_THROTTLE_LIMIT },
+      ],
+    }),
+    AuthModule,
+    HealthModule,
+    UsersModule,
+  ],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    {
+      provide: APP_PIPE,
+      useValue: new ValidationPipe({ whitelist: true, transform: true, exceptionFactory: validationExceptionFactory }),
+    },
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    // After the throttler: unauthenticated floods must burn the rate limit before touching auth.
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+  ],
+})
+export class AppModule implements NestModule {
+  constructor(private readonly config: ConfigService) {}
+
+  configure(consumer: MiddlewareConsumer): void {
+    const nodeEnv = this.config.getOrThrow<NodeEnv>('NODE_ENV');
+
+    // CSP only in production: outside it Swagger UI is served at /docs and the default policy breaks its assets.
+    consumer.apply(helmet({ contentSecurityPolicy: nodeEnv === NodeEnv.Production })).forRoutes('{*splat}');
+  }
+}
