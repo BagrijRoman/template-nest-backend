@@ -4,12 +4,29 @@ Starter template for backend projects.
 
 **Stack:** NestJS, MongoDB, TypeScript.
 
+## What is in here
+
+[OVERVIEW.md](OVERVIEW.md) is the one page to read first: what the template delivers (validated config,
+structured logging, a single error contract, the full auth and session model, rate limiting, migrations, tests,
+CI), what is still future scope, a map of the repository, the scripts and the env variables. The itemised
+feature list is in [WORKLOG.md](WORKLOG.md).
+
 ## Getting started with a new project
 
 1. Clone this template into a new repo.
 2. Update `name` and `description` in `package.json`.
 3. Set up `.env` (DB connection, ports, secrets).
 4. Replace this README with the project's own.
+
+## API documentation (Swagger)
+
+The API documents itself: Swagger UI is generated from the decorators on every endpoint and DTO, so it never
+drifts from the code. With the dev server running it is at **[http://localhost:3000/docs](http://localhost:3000/docs)**
+(adjust the port to `PORT`); the raw OpenAPI document is at `/docs-json`.
+
+Swagger is served **only outside production**: when `NODE_ENV` is `production` the route does not exist at all
+(`src/main.ts`). Every endpoint carries its operation, request and response schemas, including the shared error
+shape; protected endpoints can be called from the UI with a bearer token via the **Authorize** button.
 
 ## Security
 
