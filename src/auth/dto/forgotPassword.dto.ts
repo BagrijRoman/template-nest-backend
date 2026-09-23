@@ -1,10 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import { IsEmail } from 'class-validator';
+import { z } from 'zod';
+import { createZodDto, emailSchema } from '../../common/validation/index.js';
 
-export class ForgotPasswordDto {
-  @ApiProperty({ format: 'email', example: 'jane@example.com' })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
-  @IsEmail({}, { message: 'email must be a valid email address' })
-  email: string;
-}
+export class ForgotPasswordDto extends createZodDto(z.object({ email: emailSchema })) {}

@@ -8,7 +8,7 @@ export class FieldErrorDto {
 
   @ApiProperty({
     example: 'isEmail',
-    description: 'The rule that failed (class-validator constraint or a business rule)',
+    description: 'The rule that failed (validation rule such as isEmail / isNotEmpty / minLength, or a business rule)',
   })
   rule: string;
 

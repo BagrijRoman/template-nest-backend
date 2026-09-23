@@ -21,7 +21,7 @@ Security posture of this backend from the development standpoint: what is implem
 
 ### Input validation & NoSQL injection
 
-- Every request body/query is a typed DTO validated by the global `ValidationPipe` (`whitelist: true` strips unknown fields — mass-assignment protection); every field carries explicit format and length limits.
+- Every request body/query is a typed DTO parsed by the global `ZodValidationPipe` through its zod schema (unknown keys are stripped — mass-assignment protection); every field carries explicit format and length limits.
 - NoSQL operator injection is stopped at two levels: DTO validation rejects non-string values before any query, and the global `mongoose.set('sanitizeFilter', true)` neutralizes `$`-operators in filter values even if a raw object ever slipped through. `$where`/JS expressions in queries are forbidden.
 - Email uniqueness is enforced by a unique index (race-safe), not just an application-level check.
 

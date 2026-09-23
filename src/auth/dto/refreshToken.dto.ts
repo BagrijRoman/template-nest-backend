@@ -1,9 +1,10 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { z } from 'zod';
+import { createZodDto, requiredStringSchema } from '../../common/validation/index.js';
 
-export class RefreshTokenDto {
-  @ApiProperty({ description: 'Refresh token previously issued by login or refresh' })
-  @IsString()
-  @IsNotEmpty({ message: 'refreshToken must not be empty' })
-  refreshToken: string;
-}
+export class RefreshTokenDto extends createZodDto(
+  z.object({
+    refreshToken: requiredStringSchema('refreshToken').meta({
+      description: 'Refresh token previously issued by login or refresh',
+    }),
+  }),
+) {}

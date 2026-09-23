@@ -1,6 +1,6 @@
 # Backend Template — Engineering Guidelines
 
-NestJS 12 starter template. TypeScript (strict), native ESM, Vitest, oxlint, Prettier, class-validator.
+NestJS 12 starter template. TypeScript (strict), native ESM, Vitest, oxlint, Prettier, zod.
 These rules are binding for any assistant or contributor working in this repo.
 
 ## Feature worklog
@@ -35,28 +35,30 @@ A husky + lint-staged pre-commit hook (`.husky/pre-commit`, activated by the `pr
 - REST conventions: plural nouns (`/users`), standard verbs and status codes — 201 for create, 204 for delete, 404 via `NotFoundException`, 409 via `ConflictException`.
 - Every list endpoint is paginated with `limit`/`offset` query params and returns an envelope: `{ data, total, limit, offset }`. Never return unbounded arrays.
 - Never return an entity directly. Services return safe/response shapes (see `SafeUser` in `src/users/entities/user.entity.ts`) — sensitive fields like `passwordHash` must never leave the service layer.
-- Every endpoint and DTO carries `@nestjs/swagger` decorators (`@ApiOperation`, `@ApiCreatedResponse`, `@ApiProperty`, …); see the API documentation section below.
+- Every endpoint carries `@nestjs/swagger` decorators (`@ApiOperation`, `@ApiCreatedResponse`, …); request DTOs document themselves from their zod schema, response DTOs carry `@ApiProperty`. See the API documentation section below.
 
 ## API documentation (Swagger)
 
 Swagger is mandatory: the API documents itself automatically via `@nestjs/swagger`, and that stays true for every change.
 
 - The Swagger setup in `main.ts` (UI at `/docs`, served outside production) must stay wired; never remove or disable it.
-- No endpoint ships undocumented: every controller method carries `@ApiOperation` plus the response decorators for each status it can return (`@ApiCreatedResponse`, `@ApiNotFoundResponse`, `@ApiConflictResponse`, …), and every DTO property carries `@ApiProperty`/`@ApiPropertyOptional` with formats and examples where they help.
+- No endpoint ships undocumented: every controller method carries `@ApiOperation` plus the response decorators for each status it can return (`@ApiCreatedResponse`, `@ApiNotFoundResponse`, `@ApiConflictResponse`, …). Request DTOs need no property decorators: `createZodDto` exposes the schema to Swagger (types, formats, length limits, required flags come from the zod checks; add descriptions and examples with `.meta({ description, example })`). Every response DTO property carries `@ApiProperty`/`@ApiPropertyOptional` with formats and examples where they help.
 - Documentation is generated from code, not written by hand — decorators live next to the endpoints and DTOs they describe, so the docs cannot drift; when an endpoint's behavior changes (status codes, response shape, params), its decorators are updated in the same change.
 - Error responses follow the shared `ErrorResponseDto` shape — every error decorator passes `type: ErrorResponseDto`; don't invent per-endpoint error schemas.
 
 ## Validation
 
-- Every request body/query is a dedicated DTO class with class-validator decorators. No `any` in controller signatures.
-- The global `ValidationPipe` (`whitelist: true`, `transform: true`, `exceptionFactory: validationExceptionFactory`) is registered in `AppModule` — unknown fields are stripped and every failed rule becomes a `{ field, rule, message }` entry in the error's `details`; rely on it instead of manual validation in controllers.
-- Partial updates use `PartialType(CreateDto)` (see `UpdateUserDto`).
+- Validation is zod (`src/common/validation/`): every request body/query is a dedicated DTO class built from a zod object schema — `export class SignInDto extends createZodDto(z.object({ … })) {}` — so Nest and Swagger still see a class while the schema is the single source of type and rules. No `any` in controller signatures. class-validator / class-transformer are not used for DTOs; `nestjs-zod` is deliberately not a dependency (it does not support Nest 12), the ~60-line `createZodDto` + `ZodValidationPipe` in-house layer replaces it.
+- The global `ZodValidationPipe` is registered in `AppModule` as `APP_PIPE`: every `createZodDto` parameter is parsed through its schema — unknown keys are stripped (`z.object` default; use `.strict()` only where rejection is wanted), normalizations (`.trim()`, `.toLowerCase()`) applied, and every failed rule becomes a `{ field, rule, message }` entry in the error's `details` via `validationExceptionFactory`. Rely on it instead of manual validation in controllers.
+- Rule names in `details` keep the class-validator vocabulary clients already branch on (`isEmail`, `isNotEmpty`, `minLength`, `maxLength`, `matches`, `isEnum`, `isString`, …): the factory derives them from the zod issue (code / format / origin). A custom `.refine()` names its rule through `params: { rule: 'myRule' }`.
+- Messages are phrased `<field> must …` (a missing field reads `<field> must not be empty`, an overlong one `<field> must be shorter than or equal to N characters`); reuse the shared field schemas in `src/common/validation/fieldSchemas.ts` (`emailSchema`, `passwordSchema(field)`, `nameSchema(field)`, `requiredStringSchema(field)`) rather than redefining email / password / name rules per DTO — the password rules in particular have a single source.
+- Partial updates derive from the base schema (`schema.partial()` / `.pick()` / `.omit()` / `.extend()`), not from a copied object.
 
 ## Error handling
 
 - All client-facing errors are normalized by `AllExceptionsFilter` (`src/common/filters/allExceptions.filter.ts`) to the `ErrorResponseBody` shape (`src/common/errors/errorResponse.dto.ts`): `{ statusCode, error, code, message, details?, meta?, timestamp, path }`. Do not invent other error shapes.
   - `code` is a stable machine-readable value from the `ErrorCode` enum (`src/common/errors/errorCode.ts`) — the thing clients branch on. Messages may be reworded; a code never changes meaning and is never reused. Add a code to the enum before throwing it.
-  - `details` is a list of `{ field, rule, message }` — one entry per failed rule on an input field. Validation errors always carry it (the global `ValidationPipe` uses `validationExceptionFactory`); business errors tied to one field carry it too (`EMAIL_TAKEN` → `email`, `WRONG_CURRENT_PASSWORD` → `currentPassword`, `BREACHED_PASSWORD` → `password`/`newPassword`).
+  - `details` is a list of `{ field, rule, message }` — one entry per failed rule on an input field. Validation errors always carry it (the global `ZodValidationPipe` uses `validationExceptionFactory`); business errors tied to one field carry it too (`EMAIL_TAKEN` → `email`, `WRONG_CURRENT_PASSWORD` → `currentPassword`, `BREACHED_PASSWORD` → `password`/`newPassword`).
   - `meta` holds extra machine-readable context specific to the code, e.g. `retryAfterSeconds` on every 429 (the filter copies the throttler's `Retry-After` header there; lockout and per-account caps set it explicitly).
 - Throw domain errors as `AppException(status, ErrorCode, message, { details?, meta? })` from `src/common/errors/`; use `AppException.forField(...)` for a single field-bound error and the shared helpers (`unauthenticatedException()`, `rateLimitedException(...)`) where they exist. Plain Nest exceptions (`NotFoundException`, …) are still accepted and get a status-derived code (`NOT_FOUND`, `CONFLICT`, …) — fine for generic cases, never for anything a client needs to distinguish.
 - Messages stay human-readable and safe to show verbatim, pattern: `User with id "..." not found`. Anti-enumeration rules still apply: identical status, code and message for "unknown email" and "wrong password".
@@ -171,4 +173,4 @@ When the corresponding capability is added to a project built on this template, 
 - Work in small increments; after any code change run `npm run lint` and `npm test` (plus `npm run test:e2e` when routes/filters/pipes changed) and report the results honestly. CI (`.github/workflows/ci.yml`) runs lint, format check, audit, unit and e2e on every push/PR — keep it green and never weaken its gates.
 - Leave changes uncommitted for review. Commit only when explicitly asked.
 - Commit messages follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:` + an imperative English description (e.g. `feat: add user registration endpoint`).
-- Keep this file in sync: if a rule here diverges from reality (e.g. ValidationPipe options change), update this file in the same change.
+- Keep this file in sync: if a rule here diverges from reality (e.g. the validation pipe changes), update this file in the same change.
