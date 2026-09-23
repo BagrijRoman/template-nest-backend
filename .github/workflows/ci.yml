@@ -1,5 +1,6 @@
-# Every push and PR runs the same gate a release requires: lint, formatting, dependency audit
-# (high+ blocks, per SECURITY.md), unit tests, and e2e against an in-memory MongoDB.
+# Every push and PR runs the same gate a release requires: lint, type check (sources and tests),
+# formatting, dependency audit (high+ blocks, per SECURITY.md), unit tests, and e2e against an
+# in-memory MongoDB.
 name: CI
 
 on:
@@ -39,6 +40,8 @@ jobs:
       - run: npm ci
 
       - run: npm run lint
+
+      - run: npm run typecheck
 
       - run: npm run format:check
 

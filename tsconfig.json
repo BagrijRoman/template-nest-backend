@@ -17,6 +17,9 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": ["vitest/globals", "node"]
-  }
+    "types": ["vitest/globals", "node"],
+    "allowJs": true
+  },
+  "include": ["src", "test", "migrations"],
+  "exclude": ["node_modules", "dist"]
 }

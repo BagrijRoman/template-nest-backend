@@ -13,6 +13,7 @@ These rules are binding for any assistant or contributor working in this repo.
 
 - `npm run start:dev` — dev server with watch
 - `npm run lint` — oxlint over `src/` and `test/`
+- `npm run typecheck` — `tsc --noEmit` over `src/`, `test/` and `migrations/` (Vitest transpiles without type checking, so this is the only place test files are type-checked; CI runs it)
 - `npm run format` — Prettier write
 - `npm run format:check` — Prettier check (no writes)
 
@@ -171,7 +172,7 @@ When the corresponding capability is added to a project built on this template, 
 
 - Follow existing patterns in this codebase; do not introduce new patterns, layers, or abstractions without asking.
 - Do not add dependencies without explicit approval.
-- Work in small increments; after any code change run `npm run lint` and `npm test` (plus `npm run test:e2e` when routes/filters/pipes changed) and report the results honestly. CI (`.github/workflows/ci.yml`) runs lint, format check, audit, unit and e2e on every push/PR — keep it green and never weaken its gates.
+- Work in small increments; after any code change run `npm run lint`, `npm run typecheck` and `npm test` (plus `npm run test:e2e` when routes/filters/pipes changed) and report the results honestly. CI (`.github/workflows/ci.yml`) runs lint, typecheck, format check, audit, unit and e2e on every push/PR — keep it green and never weaken its gates.
 - Leave changes uncommitted for review. Commit only when explicitly asked.
 - Commit messages follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:` + an imperative English description (e.g. `feat: add user registration endpoint`).
 - Keep this file in sync: if a rule here diverges from reality (e.g. the validation pipe changes), update this file in the same change.

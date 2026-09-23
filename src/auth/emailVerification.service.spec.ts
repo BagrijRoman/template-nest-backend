@@ -6,11 +6,20 @@ import { ErrorCode } from '../common/errors/index.js';
 import { MailService } from '../common/mail/mail.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import type { UserProfile } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
 import { EmailVerificationToken } from './entities/index.js';
 import { EmailVerificationService } from './emailVerification.service.js';
 
-const USER = { id: '507f1f77bcf86cd799439011', email: 'jane@example.com', emailVerified: false };
+const USER: UserProfile = {
+  id: '507f1f77bcf86cd799439011',
+  email: 'jane@example.com',
+  firstName: 'Jane',
+  lastName: 'Doe',
+  emailVerified: false,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
 const FUTURE = new Date(Date.now() + 60_000);
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -24,7 +33,7 @@ describe('EmailVerificationService', () => {
     deleteMany: vi.fn(),
     findOneAndDelete: vi.fn(),
   };
-  const usersService = { findByEmail: vi.fn(), markEmailVerified: vi.fn() };
+  const usersService = { findByEmail: vi.fn(), findById: vi.fn(), markEmailVerified: vi.fn() };
   const mailService = { send: vi.fn() };
   const securityEvents = { record: vi.fn() };
   const accountRateLimit = { consume: vi.fn() };
@@ -90,7 +99,7 @@ describe('EmailVerificationService', () => {
   });
 
   it('sends for an authenticated unverified caller identified by id', async () => {
-    usersService.findById = vi.fn().mockResolvedValue(USER);
+    usersService.findById.mockResolvedValue(USER);
 
     await service.requestVerification(USER.id);
 
@@ -98,10 +107,10 @@ describe('EmailVerificationService', () => {
   });
 
   it('answers the authenticated caller honestly: 400 when already verified, 429 when over the cap', async () => {
-    usersService.findById = vi.fn().mockResolvedValue({ ...USER, emailVerified: true });
+    usersService.findById.mockResolvedValue({ ...USER, emailVerified: true });
     await expect(service.requestVerification(USER.id)).rejects.toThrow('Email is already verified');
 
-    usersService.findById = vi.fn().mockResolvedValue(USER);
+    usersService.findById.mockResolvedValue(USER);
     accountRateLimit.consume.mockResolvedValue(false);
     await expect(service.requestVerification(USER.id)).rejects.toThrow(
       'Too many verification emails requested, try again later',

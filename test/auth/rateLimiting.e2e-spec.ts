@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { Server } from 'node:http';
 import { AppModule } from '../../src/app.module.js';
 import { AUTH_THROTTLE_LIMIT } from '../../src/auth/auth.constants.js';
 
 describe('Auth rate limiting (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication<Server>;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
