@@ -10,6 +10,7 @@ import { EmailVerificationService } from './emailVerification.service.js';
 import { MailService } from '../common/mail/mail.service.js';
 import { PasswordResetService } from './passwordReset.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
+import { SessionsService } from './sessions.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
 
@@ -23,7 +24,9 @@ const USER = {
 };
 
 const TOKEN_PAIR = { accessToken: 'access.token.jwt', refreshToken: 'refresh.token.jwt' };
-const FAMILY_ID = 'e2a4b9a2-1c3d-4e5f-8a7b-9c0d1e2f3a4b';
+const SESSION_ID = '65f1a2b3c4d5e6f7a8b9c0d1';
+const REFRESH_EXPIRES_AT = new Date(Date.now() + 30 * 24 * 3_600_000);
+const CLIENT = { userAgent: 'Mozilla/5.0', ip: '203.0.113.10' };
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -37,7 +40,18 @@ describe('AuthService', () => {
   };
   const credentialsService = { deleteForUser: vi.fn(), updatePassword: vi.fn(), verifyPassword: vi.fn() };
   const tokensService = { issueTokenPair: vi.fn() };
-  const refreshTokensService = { consume: vi.fn(), persist: vi.fn(), revokeAllForUser: vi.fn() };
+  const refreshTokensService = {
+    consume: vi.fn(),
+    persist: vi.fn(),
+    revokeAllForUser: vi.fn(),
+    revokeSession: vi.fn(),
+  };
+  const sessionsService = {
+    belongsToUser: vi.fn(),
+    findForUser: vi.fn(),
+    start: vi.fn(),
+    touch: vi.fn(),
+  };
   const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
   const securityEvents = { record: vi.fn() };
   const emailVerificationService = { deleteForUser: vi.fn(), sendVerification: vi.fn() };
@@ -47,7 +61,8 @@ describe('AuthService', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
     tokensService.issueTokenPair.mockResolvedValue(TOKEN_PAIR);
-    refreshTokensService.persist.mockResolvedValue(undefined);
+    refreshTokensService.persist.mockResolvedValue(REFRESH_EXPIRES_AT);
+    sessionsService.start.mockResolvedValue(SESSION_ID);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -61,6 +76,7 @@ describe('AuthService', () => {
         { provide: EmailVerificationService, useValue: emailVerificationService },
         { provide: PasswordResetService, useValue: passwordResetService },
         { provide: MailService, useValue: mailService },
+        { provide: SessionsService, useValue: sessionsService },
       ],
     }).compile();
 
@@ -78,8 +94,8 @@ describe('AuthService', () => {
     });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
-    expect(tokensService.issueTokenPair).toHaveBeenCalledWith(USER.id);
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, expect.any(String));
+    expect(tokensService.issueTokenPair).toHaveBeenCalledWith(USER.id, SESSION_ID);
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, SESSION_ID);
     expect(emailVerificationService.sendVerification).toHaveBeenCalledWith(USER);
   });
 
@@ -92,19 +108,23 @@ describe('AuthService', () => {
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(usersService.findByEmail).toHaveBeenCalledWith(USER.email);
     expect(credentialsService.verifyPassword).toHaveBeenCalledWith(USER.id, 'Secret123');
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, expect.any(String));
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, SESSION_ID);
   });
 
-  it('starts a distinct token family for every sign-in', async () => {
+  it('opens a device session per sign-in and keeps it alive for as long as the refresh token', async () => {
     usersService.findByEmail.mockResolvedValue(USER);
     credentialsService.verifyPassword.mockResolvedValue(true);
+    sessionsService.start.mockResolvedValueOnce('session-one').mockResolvedValueOnce('session-two');
 
-    await service.signIn({ email: USER.email, password: 'Secret123' });
-    await service.signIn({ email: USER.email, password: 'Secret123' });
+    await service.signIn({ email: USER.email, password: 'Secret123' }, CLIENT);
+    await service.signIn({ email: USER.email, password: 'Secret123' }, CLIENT);
 
-    const [, firstFamily] = refreshTokensService.persist.mock.calls[0];
-    const [, secondFamily] = refreshTokensService.persist.mock.calls[1];
-    expect(firstFamily).not.toBe(secondFamily);
+    expect(sessionsService.start).toHaveBeenCalledWith(USER.id, CLIENT);
+    expect(refreshTokensService.persist.mock.calls.map(([, sessionId]) => sessionId)).toEqual([
+      'session-one',
+      'session-two',
+    ]);
+    expect(sessionsService.touch).toHaveBeenCalledWith('session-one', CLIENT, REFRESH_EXPIRES_AT);
   });
 
   it('rejects bad credentials with a generic 401, records the failure and issues no tokens', async () => {
@@ -152,14 +172,16 @@ describe('AuthService', () => {
   });
 
   it('rotates: consumes the presented refresh token and issues the next pair in the same family', async () => {
-    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, sessionId: SESSION_ID });
     usersService.findById.mockResolvedValue(USER);
 
     const response = await service.refresh({ refreshToken: 'valid.refresh.jwt' });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(refreshTokensService.consume).toHaveBeenCalledWith('valid.refresh.jwt');
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, FAMILY_ID);
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, SESSION_ID);
+    // Rotation stays in the session it was given; no new device appears in the list.
+    expect(sessionsService.start).not.toHaveBeenCalled();
   });
 
   it('rejects a refresh token that cannot be consumed with a generic 401 and issues nothing', async () => {
@@ -172,7 +194,7 @@ describe('AuthService', () => {
   });
 
   it('rejects a refresh token whose account no longer exists with the same generic 401', async () => {
-    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, sessionId: SESSION_ID });
     usersService.findById.mockResolvedValue(null);
 
     await expect(service.refresh({ refreshToken: 'orphaned.refresh.jwt' })).rejects.toThrow(
@@ -267,14 +289,50 @@ describe('AuthService', () => {
     expect(usersService.delete).not.toHaveBeenCalled();
   });
 
-  it('logs out by consuming the token, and stays idempotent for an unredeemable one', async () => {
-    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
+  it('logs out by ending the device session, and stays idempotent for an unredeemable token', async () => {
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, sessionId: SESSION_ID });
     await expect(service.logout({ refreshToken: 'valid.refresh.jwt' })).resolves.toBeUndefined();
+    expect(refreshTokensService.revokeSession).toHaveBeenCalledWith(SESSION_ID);
 
     refreshTokensService.consume.mockResolvedValue(null);
     await expect(service.logout({ refreshToken: 'already.dead.jwt' })).resolves.toBeUndefined();
 
     expect(refreshTokensService.consume).toHaveBeenCalledTimes(2);
+    expect(refreshTokensService.revokeSession).toHaveBeenCalledTimes(1);
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  it('lists the devices and marks the one the request came from', async () => {
+    const summaries = [
+      { id: SESSION_ID, lastSeenAt: new Date(), createdAt: new Date() },
+      { id: 'other-session', lastSeenAt: new Date(), createdAt: new Date() },
+    ];
+    sessionsService.findForUser.mockResolvedValue(summaries);
+
+    const sessions = await service.listSessions(USER.id, SESSION_ID);
+
+    expect(sessions.map((session) => session.current)).toEqual([true, false]);
+  });
+
+  it('revokes one device session after checking it belongs to the caller', async () => {
+    sessionsService.belongsToUser.mockResolvedValue(true);
+
+    await service.revokeSession(USER.id, SESSION_ID);
+
+    expect(sessionsService.belongsToUser).toHaveBeenCalledWith(SESSION_ID, USER.id);
+    expect(refreshTokensService.revokeSession).toHaveBeenCalledWith(SESSION_ID);
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.SessionRevoked, {
+      userId: USER.id,
+      sessionId: SESSION_ID,
+    });
+  });
+
+  it('answers 404 for a session of somebody else, revoking nothing', async () => {
+    sessionsService.belongsToUser.mockResolvedValue(false);
+
+    await expect(service.revokeSession(USER.id, 'someone-elses-session')).rejects.toMatchObject({
+      code: ErrorCode.NotFound,
+    });
+    expect(refreshTokensService.revokeSession).not.toHaveBeenCalled();
   });
 });

@@ -129,7 +129,7 @@ describe('POST /auth/refresh (e2e)', () => {
     const live = after.find((record) => record.consumedAt === null);
     expect(consumed?.tokenHash).toBe(before[0].tokenHash);
     expect(live?.tokenHash).not.toBe(before[0].tokenHash);
-    expect(live?.familyId).toBe(before[0].familyId);
+    expect(live?.sessionId).toBe(before[0].sessionId);
   });
 
   it('lets only one of two concurrent redemptions of the same token win', async () => {

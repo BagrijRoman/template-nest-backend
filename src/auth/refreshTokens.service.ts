@@ -6,6 +6,7 @@ import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { UsersService } from '../users/users.service.js';
 import { RefreshToken } from './entities/index.js';
+import { SessionsService } from './sessions.service.js';
 import { TokensService } from './tokens.service.js';
 
 const MS_PER_SECOND = 1000;
@@ -14,7 +15,7 @@ const MS_PER_SECOND = 1000;
 // resistance is enough — and the store is looked up by hash, which requires determinism.
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
-export type ConsumedRefreshToken = { userId: string; familyId: string };
+export type ConsumedRefreshToken = { userId: string; sessionId: string };
 
 @Injectable()
 export class RefreshTokensService {
@@ -24,32 +25,38 @@ export class RefreshTokensService {
     private readonly securityEvents: SecurityEventsService,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
+    private readonly sessionsService: SessionsService,
   ) {}
 
-  /** Stores a just-issued refresh token, hashed, inside the given family; the record expires with the token. */
-  async persist(refreshToken: string, familyId: string): Promise<void> {
+  /**
+   * Stores a just-issued refresh token, hashed, inside the given session; the record expires with the
+   * token, and its expiry is returned so the session can be kept alive exactly as long.
+   */
+  async persist(refreshToken: string, sessionId: string): Promise<Date> {
     const payload = await this.tokensService.verifyRefreshToken(refreshToken);
     if (!payload) {
       // Only just-issued tokens reach here, so an invalid one is a programming error, not user input.
       throw new Error('Refusing to persist an invalid refresh token');
     }
 
+    const expiresAt = new Date(payload.exp * MS_PER_SECOND);
     await this.refreshTokenModel.create({
       tokenHash: hashToken(refreshToken),
       userId: payload.sub,
-      familyId,
+      sessionId,
       consumedAt: null,
-      expiresAt: new Date(payload.exp * MS_PER_SECOND),
+      expiresAt,
     });
+    return expiresAt;
   }
 
   /**
    * Redeems a refresh token: verifies it and atomically marks its record consumed, so a token can
-   * never be redeemed twice — rotation and logout share this. Returns the owner and family, or
+   * never be redeemed twice — rotation and logout share this. Returns the owner and session, or
    * null when the token is invalid, expired, already used, or revoked.
    *
    * A consumed token showing up again is proof of theft (either the thief or the victim holds a
-   * copy that already rotated), so the whole family is revoked — the strict stance: a legitimate
+   * copy that already rotated), so the whole session is revoked — the strict stance: a legitimate
    * double-refresh race also ends the session rather than leaving a stolen token alive.
    */
   async consume(refreshToken: string): Promise<ConsumedRefreshToken | null> {
@@ -63,16 +70,16 @@ export class RefreshTokensService {
       .findOneAndUpdate({ tokenHash, consumedAt: null }, { consumedAt: new Date() })
       .lean();
     if (record) {
-      return { userId: record.userId, familyId: record.familyId };
+      return { userId: record.userId, sessionId: record.sessionId };
     }
 
     const reusedRecord = await this.refreshTokenModel.findOne({ tokenHash }).lean();
     if (reusedRecord) {
       this.securityEvents.record(SecurityEvent.RefreshTokenReuseDetected, {
         userId: reusedRecord.userId,
-        familyId: reusedRecord.familyId,
+        sessionId: reusedRecord.sessionId,
       });
-      await this.revokeFamily(reusedRecord.familyId);
+      await this.revokeSession(reusedRecord.sessionId);
       await this.notifyOwner(reusedRecord.userId);
     }
     return null;
@@ -93,13 +100,16 @@ export class RefreshTokensService {
     });
   }
 
-  /** Revokes every token of one device session; the caller's generic 401 stays indistinguishable. */
-  private async revokeFamily(familyId: string): Promise<void> {
-    await this.refreshTokenModel.deleteMany({ familyId });
+  /**
+   * Ends one device session: its tokens and the session row go together, so nothing is left that
+   * could be redeemed or shown in a device list. The caller's generic 401 stays indistinguishable.
+   */
+  async revokeSession(sessionId: string): Promise<void> {
+    await Promise.all([this.refreshTokenModel.deleteMany({ sessionId }), this.sessionsService.delete(sessionId)]);
   }
 
   /** "Logout everywhere": kills every device session of the user (password change, compromise response). */
   async revokeAllForUser(userId: string): Promise<void> {
-    await this.refreshTokenModel.deleteMany({ userId });
+    await Promise.all([this.refreshTokenModel.deleteMany({ userId }), this.sessionsService.deleteAllForUser(userId)]);
   }
 }

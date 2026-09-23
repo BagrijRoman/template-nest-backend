@@ -1,5 +1,5 @@
 import { ErrorResponseDto } from '../common/errors/index.js';
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -7,13 +7,17 @@ import {
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
+  ApiNotFoundResponse,
   ApiOperation,
+  ApiParam,
   ApiPayloadTooLargeResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { Client } from '../common/decorators/clientInfo.decorator.js';
+import { CurrentSessionId } from '../common/decorators/currentSession.decorator.js';
 import { CurrentUser } from '../common/decorators/currentUser.decorator.js';
 import { Public } from '../common/decorators/public.decorator.js';
 import type { AuthenticatedUser } from '../common/guards/jwtAuth.guard.js';
@@ -26,11 +30,13 @@ import {
   ForgotPasswordDto,
   RefreshTokenDto,
   ResetPasswordDto,
+  SessionResponseDto,
   ResendVerificationDto,
   SignInDto,
   SignUpDto,
   VerifyEmailDto,
 } from './dto/index.js';
+import type { ClientInfo } from './sessions.service.js';
 import { EmailVerificationService } from './emailVerification.service.js';
 import { PasswordResetService } from './passwordReset.service.js';
 
@@ -53,8 +59,8 @@ export class AuthController {
   @ApiCreatedResponse({ type: AuthResponseDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto, description: 'Validation failed' })
   @ApiConflictResponse({ type: ErrorResponseDto, description: 'A user with this email already exists' })
-  signUp(@Body() signUpDto: SignUpDto): Promise<AuthResponseDto> {
-    return this.authService.signUp(signUpDto);
+  signUp(@Body() signUpDto: SignUpDto, @Client() client: ClientInfo): Promise<AuthResponseDto> {
+    return this.authService.signUp(signUpDto, client);
   }
 
   @Post('sign-in')
@@ -68,8 +74,8 @@ export class AuthController {
     type: ErrorResponseDto,
     description: 'Rate limit exceeded, or sign-in temporarily locked after repeated failed attempts',
   })
-  signIn(@Body() signInDto: SignInDto): Promise<AuthResponseDto> {
-    return this.authService.signIn(signInDto);
+  signIn(@Body() signInDto: SignInDto, @Client() client: ClientInfo): Promise<AuthResponseDto> {
+    return this.authService.signIn(signInDto, client);
   }
 
   @Post('refresh')
@@ -79,8 +85,8 @@ export class AuthController {
   @ApiOkResponse({ type: AuthResponseDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto, description: 'Validation failed' })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'Invalid refresh token' })
-  refresh(@Body() refreshTokenDto: RefreshTokenDto): Promise<AuthResponseDto> {
-    return this.authService.refresh(refreshTokenDto);
+  refresh(@Body() refreshTokenDto: RefreshTokenDto, @Client() client: ClientInfo): Promise<AuthResponseDto> {
+    return this.authService.refresh(refreshTokenDto, client);
   }
 
   @Post('logout')
@@ -193,7 +199,32 @@ export class AuthController {
   changePassword(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Body() changePasswordDto: ChangePasswordDto,
+    @Client() client: ClientInfo,
   ): Promise<AuthResponseDto> {
-    return this.authService.changePassword(currentUser.id, changePasswordDto);
+    return this.authService.changePassword(currentUser.id, changePasswordDto, client);
+  }
+
+  @Get('sessions')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List the devices signed in to this account' })
+  @ApiOkResponse({ type: [SessionResponseDto] })
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'Invalid or missing access token' })
+  listSessions(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @CurrentSessionId() currentSessionId: string,
+  ): Promise<SessionResponseDto[]> {
+    return this.authService.listSessions(currentUser.id, currentSessionId);
+  }
+
+  @Delete('sessions/:sessionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiParam({ name: 'sessionId', description: 'Session id from the device list' })
+  @ApiOperation({ summary: 'Sign one device out; its refresh token dies immediately' })
+  @ApiNoContentResponse({ description: 'Session revoked' })
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'Invalid or missing access token' })
+  @ApiNotFoundResponse({ type: ErrorResponseDto, description: 'No such session on this account' })
+  revokeSession(@CurrentUser() currentUser: AuthenticatedUser, @Param('sessionId') sessionId: string): Promise<void> {
+    return this.authService.revokeSession(currentUser.id, sessionId);
   }
 }

@@ -17,11 +17,14 @@ import {
   PasswordResetTokenSchema,
   RefreshToken,
   RefreshTokenSchema,
+  Session,
+  SessionSchema,
   SignInAttempt,
   SignInAttemptSchema,
 } from './entities/index.js';
 import { PasswordResetService } from './passwordReset.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
+import { SessionsService } from './sessions.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
 
@@ -38,6 +41,7 @@ import { TokensService } from './tokens.service.js';
       { name: EmailVerificationToken.name, schema: EmailVerificationTokenSchema },
       { name: PasswordResetToken.name, schema: PasswordResetTokenSchema },
       { name: RefreshToken.name, schema: RefreshTokenSchema },
+      { name: Session.name, schema: SessionSchema },
       { name: SignInAttempt.name, schema: SignInAttemptSchema },
     ]),
   ],
@@ -48,6 +52,7 @@ import { TokensService } from './tokens.service.js';
     EmailVerificationService,
     PasswordResetService,
     RefreshTokensService,
+    SessionsService,
     SignInLockoutService,
     TokensService,
   ],

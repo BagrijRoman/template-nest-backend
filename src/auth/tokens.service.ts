@@ -6,7 +6,7 @@ import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 // Payloads stay minimal on purpose: a JWT is encoded, not encrypted — nothing sensitive belongs here.
 // `iat` (seconds since epoch) is added by the JWT library at signing; the guard compares it against
 // the account's session cutoff.
-export type AccessTokenPayload = { sub: string };
+export type AccessTokenPayload = { sub: string; sid: string };
 export type VerifiedAccessTokenPayload = AccessTokenPayload & { iat: number };
 export type RefreshTokenPayload = { sub: string; jti: string };
 
@@ -37,10 +37,10 @@ export class TokensService {
     this.refreshTtl = config.getOrThrow<JwtTtl>('JWT_REFRESH_TTL');
   }
 
-  issueTokenPair(userId: string): Promise<TokenPair> {
+  issueTokenPair(userId: string, sessionId: string): Promise<TokenPair> {
     // `jti` keeps back-to-back refresh tokens for one user distinct (`iat` has second precision) —
     // otherwise two identical tokens would collide in the hashed server-side store.
-    const accessPayload: AccessTokenPayload = { sub: userId };
+    const accessPayload: AccessTokenPayload = { sub: userId, sid: sessionId };
     const refreshPayload: RefreshTokenPayload = { sub: userId, jti: randomUUID() };
 
     return Promise.all([

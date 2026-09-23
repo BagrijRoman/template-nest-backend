@@ -52,7 +52,7 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<Request & { user: AuthenticatedUser }>();
+    const request = context.switchToHttp().getRequest<Request & { user: AuthenticatedUser; sessionId: string }>();
     const token = extractBearerToken(request);
     const payload = token ? await this.tokensService.verifyAccessToken(token) : null;
     if (!payload) {
@@ -66,6 +66,8 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     request.user = record.user;
+    // Names the device session this request belongs to, so the device list can mark it.
+    request.sessionId = payload.sid;
     return true;
   }
 }

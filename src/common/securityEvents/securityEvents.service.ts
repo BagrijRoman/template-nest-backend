@@ -11,6 +11,7 @@ export enum SecurityEvent {
   TokenRefreshed = 'auth.token_refreshed',
   RefreshTokenReuseDetected = 'auth.refresh_token_reuse_detected',
   LoggedOut = 'auth.logged_out',
+  SessionRevoked = 'auth.session_revoked',
   PasswordChangeRejected = 'auth.password_change_rejected',
   PasswordChanged = 'auth.password_changed',
   AccountRateLimitExceeded = 'account.rate_limit_exceeded',
@@ -36,7 +37,8 @@ export type SecurityEventDetails = {
   userId?: string;
   /** Raw email — the service hashes it before logging; plaintext never reaches the logs. */
   email?: string;
-  familyId?: string;
+  /** The device session an auth event happened in. */
+  sessionId?: string;
   /** Machine-readable action name for rate-limit events, e.g. "verification-email". */
   action?: string;
   /** The role granted by a role-change event. */

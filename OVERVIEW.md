@@ -51,9 +51,12 @@ migrate-mongo · GitHub Actions.
   equalised hashing time).
 - **Password hashing** with salted async scrypt and timing-safe comparison; hashes live in a separate `credentials` collection, apart from `users`.
 - **JWT access + refresh token pairs** with distinct secrets and minimal payloads.
-- **Refresh tokens stored server-side as hashes**, single-use, rotated on every `POST /auth/refresh`, grouped
-  into families (one per device session). A replayed token revokes its whole family and leaves other sessions alone.
-- **Logout** (`POST /auth/logout`), idempotent.
+- **Refresh tokens stored server-side as hashes**, single-use, rotated on every `POST /auth/refresh`, each one
+  belonging to a device session. A replayed token revokes that whole session and leaves the other devices alone.
+- **Device sessions** with the User-Agent and address they were last seen from: `GET /auth/sessions` is the device
+  list with the current device marked, `DELETE /auth/sessions/:id` signs one out. Per-device data such as a push
+  notification token belongs on that document.
+- **Logout** (`POST /auth/logout`), idempotent, ending that device's session.
 - **Per-account sign-in lockout**: five failures lock the email for a sliding 15-minute window, unknown emails
   lock identically, the owner is notified.
 - **Change password** (`POST /auth/change-password`): requires the current password, feeds the lockout on failure,
@@ -90,8 +93,8 @@ migrate-mongo · GitHub Actions.
 
 | Level                                  | Files | Runner             | Needs                                                         |
 | -------------------------------------- | ----- | ------------------ | ------------------------------------------------------------- |
-| unit (`*.spec.ts`, next to the source) | 26    | `npm test`         | nothing: models and transports are mocked                     |
-| e2e (`test/**/*.e2e-spec.ts`)          | 27    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
+| unit (`*.spec.ts`, next to the source) | 27    | `npm test`         | nothing: models and transports are mocked                     |
+| e2e (`test/**/*.e2e-spec.ts`)          | 29    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
 
 E2e tests share the production app wiring (`setupApp`), so what they prove is what runs.
 
