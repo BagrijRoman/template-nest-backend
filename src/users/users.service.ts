@@ -13,6 +13,9 @@ type LeanUser = User & { _id: Types.ObjectId };
 
 export type UserPage = { data: UserProfile[]; total: number; limit: number; offset: number };
 
+/** What JwtAuthGuard needs: who the caller is, plus the cutoff that retires older access tokens. */
+export type AuthenticationRecord = { user: UserProfile; sessionsValidFrom: Date | null };
+
 const isDuplicateKeyError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: number }).code === MONGO_DUPLICATE_KEY_ERROR_CODE;
 
@@ -60,6 +63,23 @@ export class UsersService {
     }
     const user = await this.userModel.findById(id).lean();
     return user ? this.toUserProfile(user) : null;
+  }
+
+  /** The per-request authentication read; the cutoff stays out of `UserProfile` so it cannot leak into a response. */
+  async findForAuthentication(id: string): Promise<AuthenticationRecord | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+    const user = await this.userModel.findById(id).lean();
+    return user ? { user: this.toUserProfile(user), sessionsValidFrom: user.sessionsValidFrom ?? null } : null;
+  }
+
+  /**
+   * Retires every access token issued so far, the counterpart to revoking the refresh tokens:
+   * without it a stolen access token would outlive a password change by its whole TTL.
+   */
+  async markSessionsRevoked(id: string): Promise<void> {
+    await this.userModel.updateOne({ _id: id }, { sessionsValidFrom: new Date() });
   }
 
   async findByEmail(email: string): Promise<UserProfile | null> {

@@ -115,7 +115,12 @@ export class AuthService {
     }
 
     await this.signInLockoutService.reset(user.email);
-    await this.refreshTokensService.revokeAllForUser(userId);
+    // Both halves of "sign out everywhere": the stored refresh tokens die, and access tokens issued
+    // before now stop authenticating. The fresh pair below is issued after the cutoff.
+    await Promise.all([
+      this.refreshTokensService.revokeAllForUser(userId),
+      this.usersService.markSessionsRevoked(userId),
+    ]);
     this.securityEvents.record(SecurityEvent.PasswordChanged, { userId });
     return this.issueSession(user);
   }

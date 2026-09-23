@@ -26,6 +26,12 @@ export class User {
   @Prop({ type: String, required: true, enum: Object.values(UserRole), default: UserRole.User })
   role: UserRole;
 
+  // Access tokens issued before this moment are refused by JwtAuthGuard: it is how a password
+  // change takes effect at once instead of when the last stolen access token expires. Unset on
+  // accounts that never revoked anything.
+  @Prop({ type: Date, default: null })
+  sessionsValidFrom: Date | null;
+
   // Managed by Mongoose via `timestamps: true`.
   createdAt: Date;
   updatedAt: Date;
@@ -34,6 +40,7 @@ export class User {
 export type UserDocument = HydratedDocument<User>;
 export const UserSchema = SchemaFactory.createForClass(User);
 
-// The shape that leaves UsersService: the entity holds no secret (hashes live in `credentials`),
-// so this is the entity plus `id`, the string form of `_id`.
-export type UserProfile = User & { id: string };
+// The shape that leaves UsersService and reaches API responses: the entity holds no secret (hashes
+// live in `credentials`), so this is the entity plus `id`, the string form of `_id`, minus the
+// session cutoff, which is authentication bookkeeping and no business of a client.
+export type UserProfile = Omit<User, 'sessionsValidFrom'> & { id: string };

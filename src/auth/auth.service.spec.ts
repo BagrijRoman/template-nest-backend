@@ -26,7 +26,7 @@ const FAMILY_ID = 'e2a4b9a2-1c3d-4e5f-8a7b-9c0d1e2f3a4b';
 describe('AuthService', () => {
   let service: AuthService;
 
-  const usersService = { create: vi.fn(), findByEmail: vi.fn(), findById: vi.fn() };
+  const usersService = { create: vi.fn(), findByEmail: vi.fn(), findById: vi.fn(), markSessionsRevoked: vi.fn() };
   const credentialsService = { updatePassword: vi.fn(), verifyPassword: vi.fn() };
   const tokensService = { issueTokenPair: vi.fn() };
   const refreshTokensService = { consume: vi.fn(), persist: vi.fn(), revokeAllForUser: vi.fn() };
@@ -181,6 +181,8 @@ describe('AuthService', () => {
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(credentialsService.updatePassword).toHaveBeenCalledWith(USER.id, 'OldSecret123', 'NewSecret123');
     expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
+    // The other half of "sign out everywhere": access tokens issued earlier stop authenticating.
+    expect(usersService.markSessionsRevoked).toHaveBeenCalledWith(USER.id);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.PasswordChanged, { userId: USER.id });
     expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
   });
@@ -198,6 +200,7 @@ describe('AuthService', () => {
     });
     expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
     expect(refreshTokensService.revokeAllForUser).not.toHaveBeenCalled();
+    expect(usersService.markSessionsRevoked).not.toHaveBeenCalled();
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
   });
 

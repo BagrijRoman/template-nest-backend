@@ -1,6 +1,5 @@
 import { ErrorResponseDto } from '../common/errors/index.js';
 import { Controller, Get, Query } from '@nestjs/common';
-import { unauthenticatedException } from '../common/errors/index.js';
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
@@ -15,7 +14,7 @@ import { Roles } from '../common/decorators/roles.decorator.js';
 import { PaginationQueryDto } from '../common/dto/index.js';
 import type { AuthenticatedUser } from '../common/guards/jwtAuth.guard.js';
 import { UserListResponseDto, UserResponseDto } from './dto/index.js';
-import { UserProfile, UserRole } from './entities/index.js';
+import { UserRole, type UserProfile } from './entities/index.js';
 import { UserPage, UsersService } from './users.service.js';
 
 @ApiTags('users')
@@ -39,12 +38,9 @@ export class UsersController {
   @Get('me')
   @ApiOperation({ summary: 'Get the authenticated user' })
   @ApiOkResponse({ type: UserResponseDto })
-  async getMe(@CurrentUser() currentUser: AuthenticatedUser): Promise<UserProfile> {
-    const user = await this.usersService.findById(currentUser.id);
-    if (!user) {
-      // The account vanished while its access token was still valid — force a re-auth, not a 404.
-      throw unauthenticatedException();
-    }
-    return user;
+  // JwtAuthGuard loaded the account to authenticate the request; re-reading it here would be a
+  // second query for the same document.
+  getMe(@CurrentUser() currentUser: AuthenticatedUser): UserProfile {
+    return currentUser;
   }
 }

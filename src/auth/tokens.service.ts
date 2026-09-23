@@ -4,7 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 
 // Payloads stay minimal on purpose: a JWT is encoded, not encrypted — nothing sensitive belongs here.
+// `iat` (seconds since epoch) is added by the JWT library at signing; the guard compares it against
+// the account's session cutoff.
 export type AccessTokenPayload = { sub: string };
+export type VerifiedAccessTokenPayload = AccessTokenPayload & { iat: number };
 export type RefreshTokenPayload = { sub: string; jti: string };
 
 // Verification also yields `exp` (seconds since epoch, added by the JWT library at signing);
@@ -47,8 +50,8 @@ export class TokensService {
   }
 
   /** Returns the payload of a valid, unexpired access token; null for anything else (tampered, expired, wrong kind). */
-  verifyAccessToken(token: string): Promise<AccessTokenPayload | null> {
-    return this.verify<AccessTokenPayload>(token, this.accessSecret);
+  verifyAccessToken(token: string): Promise<VerifiedAccessTokenPayload | null> {
+    return this.verify<VerifiedAccessTokenPayload>(token, this.accessSecret);
   }
 
   /** Returns the payload of a valid, unexpired refresh token; null for anything else (tampered, expired, wrong kind). */

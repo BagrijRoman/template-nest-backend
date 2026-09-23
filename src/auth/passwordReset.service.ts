@@ -100,7 +100,12 @@ export class PasswordResetService {
     }
     await this.credentialsService.replacePassword(user.id, newPassword);
 
-    await this.refreshTokensService.revokeAllForUser(user.id);
+    // Both halves of "sign out everywhere": stored refresh tokens die, and access tokens issued
+    // before now stop authenticating.
+    await Promise.all([
+      this.refreshTokensService.revokeAllForUser(user.id),
+      this.usersService.markSessionsRevoked(user.id),
+    ]);
     this.securityEvents.record(SecurityEvent.PasswordResetCompleted, { userId: user.id });
     await this.mailService.send({
       to: user.email,

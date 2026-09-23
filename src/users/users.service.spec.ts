@@ -39,6 +39,7 @@ describe('UsersService', () => {
     findByIdAndUpdate: vi.fn(),
     findOne: vi.fn(),
     findOneAndUpdate: vi.fn(),
+    updateOne: vi.fn(),
   };
   const credentialsService = { assertNotBreached: vi.fn(), createPassword: vi.fn() };
   const securityEvents = { record: vi.fn() };
@@ -140,6 +141,39 @@ describe('UsersService', () => {
 
     expect(await service.findById('not-an-object-id')).toBeNull();
     expect(userModel.findById).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the account and its session cutoff for authentication', async () => {
+    const cutoff = new Date();
+    const doc = leanUser({ sessionsValidFrom: cutoff });
+    userModel.findById.mockReturnValue(withLean(doc));
+
+    const record = await service.findForAuthentication(doc._id.toString());
+
+    expect(record?.user.id).toBe(doc._id.toString());
+    // The cutoff is authentication bookkeeping: it must not ride along in the profile.
+    expect(record?.user).not.toHaveProperty('sessionsValidFrom');
+    expect(record?.sessionsValidFrom).toBe(cutoff);
+  });
+
+  it('reports no cutoff for an account that never revoked its sessions, and null for a missing one', async () => {
+    userModel.findById.mockReturnValue(withLean(leanUser({ sessionsValidFrom: null })));
+    expect((await service.findForAuthentication(new Types.ObjectId().toString()))?.sessionsValidFrom).toBeNull();
+
+    userModel.findById.mockReturnValue(withLean(null));
+    expect(await service.findForAuthentication(new Types.ObjectId().toString())).toBeNull();
+
+    expect(await service.findForAuthentication('not-an-object-id')).toBeNull();
+  });
+
+  it('stamps the session cutoff when sessions are revoked', async () => {
+    const id = new Types.ObjectId().toString();
+
+    await service.markSessionsRevoked(id);
+
+    const [filter, update] = userModel.updateOne.mock.calls[0];
+    expect(filter).toEqual({ _id: id });
+    expect(update.sessionsValidFrom.getTime()).toBeGreaterThanOrEqual(Date.now() - 1000);
   });
 
   it('finds a user by email', async () => {

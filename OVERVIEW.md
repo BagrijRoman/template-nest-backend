@@ -57,13 +57,15 @@ migrate-mongo · GitHub Actions.
 - **Per-account sign-in lockout**: five failures lock the email for a sliding 15-minute window, unknown emails
   lock identically, the owner is notified.
 - **Change password** (`POST /auth/change-password`): requires the current password, feeds the lockout on failure,
-  revokes every session and returns a fresh one.
+  revokes every session — refresh tokens deleted and earlier access tokens refused from that moment — and returns
+  a fresh one.
 - **Forgot / reset password** (`POST /auth/forgot-password`, `POST /auth/reset-password`): single-use hashed
   token, 30-minute TTL, anti-enumeration 204, reset revokes every session.
 - **Email verification** (`POST /auth/verify-email`, `POST /auth/resend-verification`,
   `POST /auth/send-verification`): `emailVerified` flag, single-use hashed token with a 24-hour TTL sent at sign-up.
 - **Global auth guard, default-closed**: every route needs a bearer access token unless marked `@Public()`;
-  `@CurrentUser()` gives handlers the caller.
+  the guard loads the account behind the token, so `@CurrentUser()` gives handlers the caller as stored right now
+  and a deletion, role change or session revocation applies immediately.
 - **Users**: Mongoose model with a unique email index and a secret-free response shape; `GET /users/me` as the
   reference protected endpoint.
 - **Roles** (`user` | `admin`): `@Roles()` + a global `RolesGuard` that reads the current role from the database;
@@ -85,7 +87,7 @@ migrate-mongo · GitHub Actions.
 | Level                                  | Files | Runner             | Needs                                                         |
 | -------------------------------------- | ----- | ------------------ | ------------------------------------------------------------- |
 | unit (`*.spec.ts`, next to the source) | 26    | `npm test`         | nothing: models and transports are mocked                     |
-| e2e (`test/**/*.e2e-spec.ts`)          | 24    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
+| e2e (`test/**/*.e2e-spec.ts`)          | 25    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
 
 E2e tests share the production app wiring (`setupApp`), so what they prove is what runs.
 

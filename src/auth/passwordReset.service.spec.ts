@@ -27,7 +27,7 @@ describe('PasswordResetService', () => {
     deleteMany: vi.fn(),
     findOneAndDelete: vi.fn(),
   };
-  const usersService = { findByEmail: vi.fn(), findById: vi.fn() };
+  const usersService = { findByEmail: vi.fn(), findById: vi.fn(), markSessionsRevoked: vi.fn() };
   const credentialsService = { replacePassword: vi.fn() };
   const refreshTokensService = { revokeAllForUser: vi.fn() };
   const mailService = { send: vi.fn() };
@@ -100,6 +100,8 @@ describe('PasswordResetService', () => {
     expect(passwordResetTokenModel.findOneAndDelete).toHaveBeenCalledWith({ tokenHash: sha256('raw-token') });
     expect(credentialsService.replacePassword).toHaveBeenCalledWith(USER.id, 'NewSecret123');
     expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
+    // The other half of "sign out everywhere": access tokens issued earlier stop authenticating.
+    expect(usersService.markSessionsRevoked).toHaveBeenCalledWith(USER.id);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.PasswordResetCompleted, { userId: USER.id });
     expect(mailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: USER.email }));
   });
