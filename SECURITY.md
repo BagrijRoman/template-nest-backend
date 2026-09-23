@@ -15,6 +15,7 @@ Security posture of this backend from the development standpoint: what is implem
 - Global per-IP limits via `@nestjs/throttler` in two windows: a sustained per-minute limit plus a short burst window that cuts request floods off within a second (`src/common/constants.ts`).
 - `/auth/*` carries a stricter profile (`src/auth/auth.constants.ts`) against brute force and account spam.
 - `/health-check` is exempt — probes must never be throttled.
+- **The client IP behind a proxy comes from `TRUST_PROXY`** (a hop count or a proxy whitelist, validated at startup, applied as Express' `trust proxy` in `setupApp`): unset, the socket address is used. The value `true` is rejected outright — it would make Express believe the left-most `X-Forwarded-For` entry, so any caller could forge a fresh IP per request and walk around every per-IP limit.
 - **Per-account sign-in lockout** complements the per-IP limits (which cannot stop a distributed guessing attack against one account): after 5 failed sign-ins an email is locked for 15 minutes (429), and every further failure slides the window forward; a successful sign-in wipes the counter. Counters are kept per email **including unknown emails**, so lockout behavior cannot be used to probe account existence. Backed by a TTL-purged MongoDB collection (`src/auth/signInLockout.service.ts`); a lock engaging is logged as a warning.
 - **Per-account action rate limiting** (`src/auth/accountRateLimit.service.ts`) caps abuse-prone actions per account on top of the per-IP throttler — today every email-sending flow (verification, password reset): 3 sends per 15-minute window. The first request over a cap raises a warn-level audit event and **exactly one security-alert email** to the account owner. Authenticated endpoints answer an honest 429; public ones keep answering 204 and just stop sending — a 429 there would reveal that the email belongs to an account.
 - App-level throttling only blunts basic floods; real DDoS protection belongs upstream (CDN/WAF).
@@ -90,7 +91,7 @@ Every refresh token is therefore **single-use**: rotation is not an extra featur
 
 Deferred deliberately — rules already exist in `CLAUDE.md` and apply when the corresponding work happens:
 
-- **`trust proxy` + shared throttler storage (Redis)** when deploying behind a reverse proxy or in multiple replicas.
+- **Shared throttler storage (Redis)** when deploying multiple replicas: the limits are per-process today.
 - **Cookies & CSRF**: if refresh tokens ever move into cookies — `httpOnly` + `SameSite` + CSRF protection in the same change.
 
 Backlog — next level of protection:

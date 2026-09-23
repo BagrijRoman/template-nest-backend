@@ -35,6 +35,8 @@ migrate-mongo · GitHub Actions.
 - **CORS whitelist** from the env; unset means disabled; wildcard forbidden.
 - **Rate limiting** per IP in two windows (sustained and burst), a stricter profile on `/auth/*`, plus
   per-account counters for every email-sending action, with a single security-alert email when a cap is first hit.
+  Behind a reverse proxy the client IP comes from a validated `TRUST_PROXY` hop count or whitelist, never from an
+  unverified header.
 - **Request body size cap**, answered with a 413 in the standard error shape.
 - **NoSQL injection protection**: DTO validation on top of a global Mongoose `sanitizeFilter`.
 - **Security audit events**: every auth action goes through one structured-event funnel; suspicious events at
@@ -82,8 +84,8 @@ migrate-mongo · GitHub Actions.
 
 | Level                                  | Files | Runner             | Needs                                                         |
 | -------------------------------------- | ----- | ------------------ | ------------------------------------------------------------- |
-| unit (`*.spec.ts`, next to the source) | 25    | `npm test`         | nothing: models and transports are mocked                     |
-| e2e (`test/**/*.e2e-spec.ts`)          | 22    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
+| unit (`*.spec.ts`, next to the source) | 26    | `npm test`         | nothing: models and transports are mocked                     |
+| e2e (`test/**/*.e2e-spec.ts`)          | 24    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
 
 E2e tests share the production app wiring (`setupApp`), so what they prove is what runs.
 

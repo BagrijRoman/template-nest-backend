@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isTrustProxyValue } from './trustProxy.util.js';
 
 const JWT_SECRET_MIN_LENGTH = 32;
 const PORT_MAX = 65535;
@@ -53,6 +54,15 @@ const environmentSchema = z
       .string()
       .regex(/^https?:\/\/[^\s,]+(,\s*https?:\/\/[^\s,]+)*$/, {
         error: 'must be a comma-separated list of http(s) origins',
+      })
+      .optional(),
+    // How many reverse proxies sit in front of the app, or which ones to trust. Unset = none, so
+    // the socket address is the client. "true" is refused: see isTrustProxyValue.
+    TRUST_PROXY: z
+      .string()
+      .refine(isTrustProxyValue, {
+        error:
+          'must be "false", a hop count such as "1", or a comma-separated list of trusted proxy addresses / CIDRs (or the presets loopback, linklocal, uniquelocal) — never "true", which would let any client forge its own IP',
       })
       .optional(),
     // Git commit the running build was made from — set at build/deploy time, reported by /health-check.
