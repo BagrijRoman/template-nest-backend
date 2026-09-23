@@ -3,7 +3,7 @@ import { AppException, ErrorCode } from '../common/errors/index.js';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CredentialsService } from './credentials.service.js';
-import { CreateUserDto } from './dto/index.js';
+import { CreateUserDto, UpdateProfileDto } from './dto/index.js';
 import { User, UserProfile, UserRole } from './entities/index.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 
@@ -104,6 +104,22 @@ export class UsersService {
     }
     this.securityEvents.record(SecurityEvent.UserRoleChanged, { userId: updated._id.toString(), role });
     return this.toUserProfile(updated);
+  }
+
+  async updateProfile(id: string, updateProfileDto: UpdateProfileDto): Promise<UserProfile | null> {
+    if (!Types.ObjectId.isValid(id)) {
+      return null;
+    }
+    const updated = await this.userModel.findByIdAndUpdate(id, updateProfileDto, { new: true }).lean();
+    return updated ? this.toUserProfile(updated) : null;
+  }
+
+  /**
+   * Removes the account row only; the data other modules own is deleted by those modules
+   * (see `AuthService.deleteAccount`, which orchestrates the whole cascade).
+   */
+  async delete(id: string): Promise<void> {
+    await this.userModel.deleteOne({ _id: id });
   }
 
   async markEmailVerified(id: string): Promise<UserProfile | null> {

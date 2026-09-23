@@ -91,6 +91,11 @@ export class EmailVerificationService {
     });
   }
 
+  /** Drops any pending verification token of a deleted account. */
+  async deleteForUser(userId: string): Promise<void> {
+    await this.emailVerificationTokenModel.deleteMany({ userId });
+  }
+
   /**
    * Redeems the token atomically (find-and-delete — exactly one use) and marks the account
    * verified. Expired, already-used and forged tokens get the same generic 400.

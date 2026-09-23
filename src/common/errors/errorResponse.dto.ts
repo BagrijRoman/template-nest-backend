@@ -3,7 +3,10 @@ import { ErrorCode } from './errorCode.js';
 
 /** One failed rule on one input field; validation errors and field-bound business errors both use it. */
 export class FieldErrorDto {
-  @ApiProperty({ example: 'email', description: 'Dotted path of the offending field' })
+  @ApiProperty({
+    example: 'email',
+    description: 'Dotted path of the offending field; empty when the rule concerns the body as a whole',
+  })
   field: string;
 
   @ApiProperty({

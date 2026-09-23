@@ -22,6 +22,7 @@ import { AuthService } from './auth.service.js';
 import {
   AuthResponseDto,
   ChangePasswordDto,
+  DeleteAccountDto,
   ForgotPasswordDto,
   RefreshTokenDto,
   ResetPasswordDto,
@@ -152,6 +153,27 @@ export class AuthController {
   })
   resetPassword(@Body() resetPasswordDto: ResetPasswordDto): Promise<void> {
     return this.passwordResetService.resetPassword(resetPasswordDto.token, resetPasswordDto.newPassword);
+  }
+
+  @Post('delete-account')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete the account and everything stored with it; irreversible' })
+  @ApiNoContentResponse({ description: 'Account deleted — the access token stops working immediately' })
+  @ApiBadRequestResponse({
+    type: ErrorResponseDto,
+    description: 'Validation failed, or the current password is incorrect',
+  })
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'Invalid or missing access token' })
+  @ApiTooManyRequestsResponse({
+    type: ErrorResponseDto,
+    description: 'Rate limit exceeded, or temporarily locked after repeated failed password attempts',
+  })
+  deleteAccount(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body() deleteAccountDto: DeleteAccountDto,
+  ): Promise<void> {
+    return this.authService.deleteAccount(currentUser.id, deleteAccountDto);
   }
 
   @Post('change-password')

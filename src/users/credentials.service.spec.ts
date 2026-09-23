@@ -28,7 +28,7 @@ const withLean = <T>(value: T) => ({ lean: () => Promise.resolve(value) });
 describe('CredentialsService', () => {
   let service: CredentialsService;
 
-  const credentialModel = { create: vi.fn(), findOne: vi.fn(), updateOne: vi.fn() };
+  const credentialModel = { create: vi.fn(), deleteMany: vi.fn(), findOne: vi.fn(), updateOne: vi.fn() };
   const breachedPasswordsService = { isBreached: vi.fn() };
   const securityEvents = { record: vi.fn() };
 
@@ -105,6 +105,12 @@ describe('CredentialsService', () => {
     });
     expect(credentialModel.updateOne).not.toHaveBeenCalled();
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.BreachedPasswordRejected, { userId: USER_ID });
+  });
+
+  it('drops every credential of a deleted account', async () => {
+    await service.deleteForUser(USER_ID);
+
+    expect(credentialModel.deleteMany).toHaveBeenCalledWith({ userId: USER_ID });
   });
 
   it('screens a candidate password with the caller-supplied field and context', async () => {

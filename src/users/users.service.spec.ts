@@ -39,6 +39,7 @@ describe('UsersService', () => {
     findByIdAndUpdate: vi.fn(),
     findOne: vi.fn(),
     findOneAndUpdate: vi.fn(),
+    deleteMany: vi.fn(),
     updateOne: vi.fn(),
   };
   const credentialsService = { assertNotBreached: vi.fn(), createPassword: vi.fn() };
@@ -185,6 +186,32 @@ describe('UsersService', () => {
 
     userModel.findOne.mockReturnValue(withLean(null));
     expect(await service.findByEmail('missing@example.com')).toBeNull();
+  });
+
+  it('patches the profile and returns the updated user', async () => {
+    const doc = leanUser({ firstName: 'Janet' });
+    userModel.findByIdAndUpdate.mockReturnValue(withLean(doc));
+
+    const user = await service.updateProfile(doc._id.toString(), { firstName: 'Janet' });
+
+    expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(doc._id.toString(), { firstName: 'Janet' }, { new: true });
+    expect(user?.firstName).toBe('Janet');
+  });
+
+  it('returns null when patching a missing or malformed id, without writing', async () => {
+    userModel.findByIdAndUpdate.mockReturnValue(withLean(null));
+    expect(await service.updateProfile(new Types.ObjectId().toString(), { firstName: 'Janet' })).toBeNull();
+
+    expect(await service.updateProfile('not-an-object-id', { firstName: 'Janet' })).toBeNull();
+    expect(userModel.findByIdAndUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('deletes the account row', async () => {
+    const id = new Types.ObjectId().toString();
+
+    await service.delete(id);
+
+    expect(userModel.deleteOne).toHaveBeenCalledWith({ _id: id });
   });
 
   it('marks the email verified', async () => {

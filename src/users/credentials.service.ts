@@ -88,6 +88,11 @@ export class CredentialsService {
     );
   }
 
+  /** Every credential of a deleted account: nothing here outlives its owner. */
+  async deleteForUser(userId: string): Promise<void> {
+    await this.credentialModel.deleteMany({ userId });
+  }
+
   private findPassword(userId: string) {
     return this.credentialModel.findOne({ userId, type: CredentialType.Password }).lean();
   }

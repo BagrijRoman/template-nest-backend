@@ -7,6 +7,8 @@ import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { EmailVerificationService } from './emailVerification.service.js';
+import { MailService } from '../common/mail/mail.service.js';
+import { PasswordResetService } from './passwordReset.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
@@ -26,13 +28,21 @@ const FAMILY_ID = 'e2a4b9a2-1c3d-4e5f-8a7b-9c0d1e2f3a4b';
 describe('AuthService', () => {
   let service: AuthService;
 
-  const usersService = { create: vi.fn(), findByEmail: vi.fn(), findById: vi.fn(), markSessionsRevoked: vi.fn() };
-  const credentialsService = { updatePassword: vi.fn(), verifyPassword: vi.fn() };
+  const usersService = {
+    create: vi.fn(),
+    delete: vi.fn(),
+    findByEmail: vi.fn(),
+    findById: vi.fn(),
+    markSessionsRevoked: vi.fn(),
+  };
+  const credentialsService = { deleteForUser: vi.fn(), updatePassword: vi.fn(), verifyPassword: vi.fn() };
   const tokensService = { issueTokenPair: vi.fn() };
   const refreshTokensService = { consume: vi.fn(), persist: vi.fn(), revokeAllForUser: vi.fn() };
   const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
   const securityEvents = { record: vi.fn() };
-  const emailVerificationService = { sendVerification: vi.fn() };
+  const emailVerificationService = { deleteForUser: vi.fn(), sendVerification: vi.fn() };
+  const passwordResetService = { deleteForUser: vi.fn() };
+  const mailService = { send: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -49,6 +59,8 @@ describe('AuthService', () => {
         { provide: SignInLockoutService, useValue: signInLockoutService },
         { provide: SecurityEventsService, useValue: securityEvents },
         { provide: EmailVerificationService, useValue: emailVerificationService },
+        { provide: PasswordResetService, useValue: passwordResetService },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 
@@ -213,6 +225,46 @@ describe('AuthService', () => {
       service.changePassword(USER.id, { currentPassword: 'OldSecret123', newPassword: 'NewSecret123' }),
     ).rejects.toThrow(locked);
     expect(credentialsService.updatePassword).not.toHaveBeenCalled();
+  });
+
+  it('deletes the account: removes the user first, then everything each module owns', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(true);
+
+    await service.deleteAccount(USER.id, { currentPassword: 'Secret123' });
+
+    expect(usersService.delete).toHaveBeenCalledWith(USER.id);
+    expect(credentialsService.deleteForUser).toHaveBeenCalledWith(USER.id);
+    expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
+    expect(passwordResetService.deleteForUser).toHaveBeenCalledWith(USER.id);
+    expect(emailVerificationService.deleteForUser).toHaveBeenCalledWith(USER.id);
+    expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.AccountDeleted, { userId: USER.id });
+    expect(mailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: USER.email }));
+  });
+
+  it('refuses to delete the account on a wrong password, counts it toward the lockout and removes nothing', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(false);
+
+    await expect(service.deleteAccount(USER.id, { currentPassword: 'Wrong1234' })).rejects.toMatchObject({
+      code: ErrorCode.WrongCurrentPassword,
+      details: [{ field: 'currentPassword' }],
+    });
+    expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
+    expect(usersService.delete).not.toHaveBeenCalled();
+    expect(credentialsService.deleteForUser).not.toHaveBeenCalled();
+    expect(mailService.send).not.toHaveBeenCalled();
+  });
+
+  it('refuses to delete the account while the email is locked, before verifying anything', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    const locked = new HttpException('Too many failed sign-in attempts, try again later', 429);
+    signInLockoutService.assertNotLocked.mockRejectedValue(locked);
+
+    await expect(service.deleteAccount(USER.id, { currentPassword: 'Secret123' })).rejects.toThrow(locked);
+    expect(credentialsService.verifyPassword).not.toHaveBeenCalled();
+    expect(usersService.delete).not.toHaveBeenCalled();
   });
 
   it('logs out by consuming the token, and stays idempotent for an unredeemable one', async () => {

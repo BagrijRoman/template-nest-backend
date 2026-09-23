@@ -82,6 +82,11 @@ export class PasswordResetService {
     });
   }
 
+  /** Drops any pending reset token of a deleted account. */
+  async deleteForUser(userId: string): Promise<void> {
+    await this.passwordResetTokenModel.deleteMany({ userId });
+  }
+
   /**
    * Redeems the token atomically (find-and-delete — a token works exactly once), replaces the
    * password and revokes every session: whoever held the old password or a stolen refresh token

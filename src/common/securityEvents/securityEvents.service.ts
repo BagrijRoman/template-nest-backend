@@ -19,6 +19,9 @@ export enum SecurityEvent {
   PasswordResetRequested = 'auth.password_reset_requested',
   PasswordResetCompleted = 'auth.password_reset_completed',
   UserRoleChanged = 'user.role_changed',
+  ProfileUpdated = 'user.profile_updated',
+  AccountDeletionRejected = 'user.account_deletion_rejected',
+  AccountDeleted = 'user.account_deleted',
 }
 
 // Suspicious events log at warn so alerting can key on the level alone.
