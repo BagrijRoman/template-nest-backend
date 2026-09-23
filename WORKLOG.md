@@ -103,5 +103,5 @@ Atomic feature breakdown of the delivered work, one estimable unit per row. Swag
 | #   | Feature                          | Notes                                                                                                                                    |
 | --- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | 92  | Backend App: Email service setup | Real transport adapter for the existing MailService stub; provider account needed (e.g. Twilio SendGrid); templates estimated separately |
-| 94  | Backend App: User profile CRUD   | PATCH /users/me, delete account                                                                                                          |
-| 95  | Backend App: Docker setup        | Dockerfile + docker-compose (app + MongoDB)                                                                                              |
+| 93  | Backend App: User profile CRUD   | PATCH /users/me, delete account                                                                                                          |
+| 94  | Backend App: Docker setup        | Dockerfile + docker-compose (app + MongoDB)                                                                                              |
