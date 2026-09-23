@@ -17,6 +17,7 @@ import { UsersService } from './users.service.js';
 
 @ApiTags('users')
 @ApiBearerAuth()
+@ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'Invalid or missing access token' })
 @ApiTooManyRequestsResponse({ type: ErrorResponseDto, description: 'Rate limit exceeded' })
 @Controller('users')
 export class UsersController {
@@ -25,7 +26,6 @@ export class UsersController {
   @Get('me')
   @ApiOperation({ summary: 'Get the authenticated user' })
   @ApiOkResponse({ type: UserResponseDto })
-  @ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'Invalid or missing access token' })
   async getMe(@CurrentUser() currentUser: AuthenticatedUser): Promise<UserProfile> {
     const user = await this.usersService.findById(currentUser.id);
     if (!user) {

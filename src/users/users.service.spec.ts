@@ -3,8 +3,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppException, ErrorCode } from '../common/errors/index.js';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { CredentialsService } from './credentials.service.js';
-import { User } from './entities/index.js';
+import { User, UserRole } from './entities/index.js';
 import { UsersService } from './users.service.js';
 
 const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
@@ -17,6 +18,7 @@ const leanUser = (overrides: Record<string, unknown> = {}) => ({
   firstName: 'Jane',
   lastName: 'Doe',
   emailVerified: false,
+  role: UserRole.User,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -34,8 +36,10 @@ describe('UsersService', () => {
     findById: vi.fn(),
     findByIdAndUpdate: vi.fn(),
     findOne: vi.fn(),
+    findOneAndUpdate: vi.fn(),
   };
   const credentialsService = { assertNotBreached: vi.fn(), createPassword: vi.fn() };
+  const securityEvents = { record: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
@@ -48,6 +52,7 @@ describe('UsersService', () => {
         UsersService,
         { provide: getModelToken(User.name), useValue: userModel },
         { provide: CredentialsService, useValue: credentialsService },
+        { provide: SecurityEventsService, useValue: securityEvents },
       ],
     }).compile();
 
@@ -66,6 +71,7 @@ describe('UsersService', () => {
       firstName: 'Jane',
       lastName: 'Doe',
       emailVerified: false,
+      role: UserRole.User,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     });
@@ -155,9 +161,37 @@ describe('UsersService', () => {
     expect(user?.emailVerified).toBe(true);
   });
 
-  it('treats documents created before the emailVerified flag as unverified', async () => {
-    userModel.findById.mockReturnValue(withLean(leanUser({ emailVerified: undefined })));
+  it('treats documents created before the emailVerified and role fields as unverified plain users', async () => {
+    userModel.findById.mockReturnValue(withLean(leanUser({ emailVerified: undefined, role: undefined })));
 
-    expect((await service.findById(new Types.ObjectId().toString()))?.emailVerified).toBe(false);
+    const user = await service.findById(new Types.ObjectId().toString());
+
+    expect(user?.emailVerified).toBe(false);
+    expect(user?.role).toBe(UserRole.User);
+  });
+
+  it('sets the role by email and records the change', async () => {
+    const doc = leanUser({ role: UserRole.Admin });
+    userModel.findOneAndUpdate.mockReturnValue(withLean(doc));
+
+    const user = await service.setRole('jane@example.com', UserRole.Admin);
+
+    expect(userModel.findOneAndUpdate).toHaveBeenCalledWith(
+      { email: 'jane@example.com' },
+      { role: UserRole.Admin },
+      { new: true },
+    );
+    expect(user?.role).toBe(UserRole.Admin);
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.UserRoleChanged, {
+      userId: doc._id.toString(),
+      role: UserRole.Admin,
+    });
+  });
+
+  it('returns null and records nothing when setting the role of an unknown email', async () => {
+    userModel.findOneAndUpdate.mockReturnValue(withLean(null));
+
+    expect(await service.setRole('missing@example.com', UserRole.Admin)).toBeNull();
+    expect(securityEvents.record).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
-import type { UserProfile } from '../users/entities/index.js';
+import { UserRole, type UserProfile } from '../users/entities/index.js';
 import { AccountActionCounter } from './entities/index.js';
 
 const USER: UserProfile = {
@@ -13,6 +13,7 @@ const USER: UserProfile = {
   firstName: 'Jane',
   lastName: 'Doe',
   emailVerified: false,
+  role: UserRole.User,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

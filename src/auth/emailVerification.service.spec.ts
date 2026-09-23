@@ -6,7 +6,7 @@ import { ErrorCode } from '../common/errors/index.js';
 import { MailService } from '../common/mail/mail.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
-import type { UserProfile } from '../users/entities/index.js';
+import { UserRole, type UserProfile } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
 import { EmailVerificationToken } from './entities/index.js';
 import { EmailVerificationService } from './emailVerification.service.js';
@@ -17,6 +17,7 @@ const USER: UserProfile = {
   firstName: 'Jane',
   lastName: 'Doe',
   emailVerified: false,
+  role: UserRole.User,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

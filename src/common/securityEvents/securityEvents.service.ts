@@ -18,6 +18,7 @@ export enum SecurityEvent {
   EmailVerified = 'user.email_verified',
   PasswordResetRequested = 'auth.password_reset_requested',
   PasswordResetCompleted = 'auth.password_reset_completed',
+  UserRoleChanged = 'user.role_changed',
 }
 
 // Suspicious events log at warn so alerting can key on the level alone.
@@ -35,6 +36,8 @@ export type SecurityEventDetails = {
   familyId?: string;
   /** Machine-readable action name for rate-limit events, e.g. "verification-email". */
   action?: string;
+  /** The role granted by a role-change event. */
+  role?: string;
 };
 
 const EMAIL_HASH_LENGTH = 16;

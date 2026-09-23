@@ -4,7 +4,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CredentialsService } from './credentials.service.js';
 import { CreateUserDto } from './dto/index.js';
-import { User, UserProfile } from './entities/index.js';
+import { User, UserProfile, UserRole } from './entities/index.js';
+import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 
 const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
 
@@ -27,6 +28,7 @@ export class UsersService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     private readonly credentialsService: CredentialsService,
+    private readonly securityEvents: SecurityEventsService,
   ) {}
 
   /** Creates the account and its password credential; every check runs before the first write. */
@@ -63,6 +65,16 @@ export class UsersService {
     return user ? this.toUserProfile(user) : null;
   }
 
+  /** Operator action (see `npm run user:set-role`); there is deliberately no endpoint for it. */
+  async setRole(email: string, role: UserRole): Promise<UserProfile | null> {
+    const updated = await this.userModel.findOneAndUpdate({ email }, { role }, { new: true }).lean();
+    if (!updated) {
+      return null;
+    }
+    this.securityEvents.record(SecurityEvent.UserRoleChanged, { userId: updated._id.toString(), role });
+    return this.toUserProfile(updated);
+  }
+
   async markEmailVerified(id: string): Promise<UserProfile | null> {
     if (!Types.ObjectId.isValid(id)) {
       return null;
@@ -91,6 +103,8 @@ export class UsersService {
       lastName: user.lastName,
       // Pre-flag documents lack the field; they are unverified by definition.
       emailVerified: user.emailVerified ?? false,
+      // Same for the role: documents from before the field are plain users.
+      role: user.role ?? UserRole.User,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

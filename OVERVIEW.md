@@ -62,8 +62,11 @@ migrate-mongo · GitHub Actions.
   `POST /auth/send-verification`): `emailVerified` flag, single-use hashed token with a 24-hour TTL sent at sign-up.
 - **Global auth guard, default-closed**: every route needs a bearer access token unless marked `@Public()`;
   `@CurrentUser()` gives handlers the caller.
-- **Users**: Mongoose model with a unique email index and a safe response shape (the hash never leaves the
-  service layer); `GET /users/me` as the reference protected endpoint.
+- **Users**: Mongoose model with a unique email index and a secret-free response shape; `GET /users/me` as the
+  reference protected endpoint.
+- **Roles** (`user` | `admin`): `@Roles()` + a global `RolesGuard` that reads the current role from the database,
+  so a revoked role applies at once; roles are granted by the operator CLI `npm run user:set-role`, never
+  through the API.
 - **Mail** goes through a `MailService` with a stub transport that logs instead of sending; a real provider
   plugs in as an adapter.
 
@@ -79,8 +82,8 @@ migrate-mongo · GitHub Actions.
 
 | Level                                  | Files | Runner             | Needs                                                         |
 | -------------------------------------- | ----- | ------------------ | ------------------------------------------------------------- |
-| unit (`*.spec.ts`, next to the source) | 20    | `npm test`         | nothing: models and transports are mocked                     |
-| e2e (`test/**/*.e2e-spec.ts`)          | 19    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
+| unit (`*.spec.ts`, next to the source) | 25    | `npm test`         | nothing: models and transports are mocked                     |
+| e2e (`test/**/*.e2e-spec.ts`)          | 21    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
 
 E2e tests share the production app wiring (`setupApp`), so what they prove is what runs.
 
@@ -89,7 +92,6 @@ E2e tests share the production app wiring (`setupApp`), so what they prove is wh
 Listed as future scope in [WORKLOG.md](WORKLOG.md#not-implemented-future-scope):
 
 - a real mail transport adapter for the existing `MailService` stub;
-- user roles;
 - user profile CRUD (`PATCH /users/me`, account deletion);
 - Docker setup (Dockerfile and docker-compose with MongoDB).
 

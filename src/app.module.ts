@@ -14,6 +14,7 @@ import { BURST_THROTTLE_LIMIT, BURST_THROTTLE_TTL_MS, THROTTLE_LIMIT, THROTTLE_T
 import { ZodValidationPipe } from './common/validation/index.js';
 import { AllExceptionsFilter } from './common/filters/allExceptions.filter.js';
 import { JwtAuthGuard } from './common/guards/jwtAuth.guard.js';
+import { RolesGuard } from './common/guards/roles.guard.js';
 import { HealthModule } from './health/health.module.js';
 import { LogLevel, NodeEnv, validateEnv } from './config/env.validation.js';
 import { UsersModule } from './users/users.module.js';
@@ -107,6 +108,11 @@ const attachMongoConnectionLogging = (connection: Connection): Connection => {
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    // After authentication: @Roles() routes check the caller's current role.
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

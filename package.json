@@ -28,7 +28,8 @@
     "migrate:up": "migrate-mongo up",
     "migrate:down": "migrate-mongo down",
     "migrate:status": "migrate-mongo status",
-    "migrate:create": "migrate-mongo create"
+    "migrate:create": "migrate-mongo create",
+    "user:set-role": "nest build && node dist/scripts/setRole.js"
   },
   "lint-staged": {
     "{src,test}/**/*.ts": [
