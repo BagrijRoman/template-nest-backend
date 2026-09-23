@@ -60,16 +60,19 @@ describe('POST /auth/delete-account (e2e)', () => {
       .send({ email })
       .expect(204);
     expect(await countFor('credentials', { userId })).toBe(1);
-    expect(await countFor('emailverificationtokens', { userId })).toBe(1);
-    expect(await countFor('passwordresettokens', { userId })).toBe(1);
+    expect(
+      await countFor('actiontokens', { userId, type: 'email-verification' }),
+    ).toBe(1);
+    expect(
+      await countFor('actiontokens', { userId, type: 'password-reset' }),
+    ).toBe(1);
 
     await deleteAccount({ currentPassword: password }).expect(204);
 
     expect(await countFor('users', { email })).toBe(0);
     expect(await countFor('credentials', { userId })).toBe(0);
     expect(await countFor('refreshtokens', { userId })).toBe(0);
-    expect(await countFor('emailverificationtokens', { userId })).toBe(0);
-    expect(await countFor('passwordresettokens', { userId })).toBe(0);
+    expect(await countFor('actiontokens', { userId })).toBe(0);
 
     await request(app.getHttpServer())
       .get('/users/me')

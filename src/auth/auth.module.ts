@@ -6,15 +6,14 @@ import { SecurityEventsModule } from '../common/securityEvents/securityEvents.mo
 import { UsersModule } from '../users/users.module.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { AuthController } from './auth.controller.js';
+import { ActionTokensService } from './actionTokens.service.js';
 import { AuthService } from './auth.service.js';
 import { EmailVerificationService } from './emailVerification.service.js';
 import {
   AccountActionCounter,
   AccountActionCounterSchema,
-  EmailVerificationToken,
-  EmailVerificationTokenSchema,
-  PasswordResetToken,
-  PasswordResetTokenSchema,
+  ActionToken,
+  ActionTokenSchema,
   RefreshToken,
   RefreshTokenSchema,
   Session,
@@ -38,8 +37,7 @@ import { TokensService } from './tokens.service.js';
     JwtModule.register({}),
     MongooseModule.forFeature([
       { name: AccountActionCounter.name, schema: AccountActionCounterSchema },
-      { name: EmailVerificationToken.name, schema: EmailVerificationTokenSchema },
-      { name: PasswordResetToken.name, schema: PasswordResetTokenSchema },
+      { name: ActionToken.name, schema: ActionTokenSchema },
       { name: RefreshToken.name, schema: RefreshTokenSchema },
       { name: Session.name, schema: SessionSchema },
       { name: SignInAttempt.name, schema: SignInAttemptSchema },
@@ -48,6 +46,7 @@ import { TokensService } from './tokens.service.js';
   controllers: [AuthController],
   providers: [
     AccountRateLimitService,
+    ActionTokensService,
     AuthService,
     EmailVerificationService,
     PasswordResetService,

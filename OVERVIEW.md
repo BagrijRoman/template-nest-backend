@@ -66,6 +66,8 @@ migrate-mongo · GitHub Actions.
   token, 30-minute TTL, anti-enumeration 204, reset revokes every session.
 - **Email verification** (`POST /auth/verify-email`, `POST /auth/resend-verification`,
   `POST /auth/send-verification`): `emailVerified` flag, single-use hashed token with a 24-hour TTL sent at sign-up.
+- **One store for mailed single-use tokens**, each row naming the action it authorizes, so a token cannot be spent
+  on a different flow and a new flow (an invite, a magic link) costs an enum value rather than a collection.
 - **Global auth guard, default-closed**: every route needs a bearer access token unless marked `@Public()`;
   the guard loads the account behind the token, so `@CurrentUser()` gives handlers the caller as stored right now
   and a deletion, role change or session revocation applies immediately.
@@ -93,8 +95,8 @@ migrate-mongo · GitHub Actions.
 
 | Level                                  | Files | Runner             | Needs                                                         |
 | -------------------------------------- | ----- | ------------------ | ------------------------------------------------------------- |
-| unit (`*.spec.ts`, next to the source) | 27    | `npm test`         | nothing: models and transports are mocked                     |
-| e2e (`test/**/*.e2e-spec.ts`)          | 29    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
+| unit (`*.spec.ts`, next to the source) | 28    | `npm test`         | nothing: models and transports are mocked                     |
+| e2e (`test/**/*.e2e-spec.ts`)          | 30    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
 
 E2e tests share the production app wiring (`setupApp`), so what they prove is what runs.
 

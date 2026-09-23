@@ -8,7 +8,7 @@ import { AuthService } from './auth.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { EmailVerificationService } from './emailVerification.service.js';
 import { MailService } from '../common/mail/mail.service.js';
-import { PasswordResetService } from './passwordReset.service.js';
+import { ActionTokensService } from './actionTokens.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import { SessionsService } from './sessions.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
@@ -54,8 +54,8 @@ describe('AuthService', () => {
   };
   const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
   const securityEvents = { record: vi.fn() };
-  const emailVerificationService = { deleteForUser: vi.fn(), sendVerification: vi.fn() };
-  const passwordResetService = { deleteForUser: vi.fn() };
+  const emailVerificationService = { sendVerification: vi.fn() };
+  const actionTokensService = { deleteForUser: vi.fn() };
   const mailService = { send: vi.fn() };
 
   beforeEach(async () => {
@@ -74,7 +74,7 @@ describe('AuthService', () => {
         { provide: SignInLockoutService, useValue: signInLockoutService },
         { provide: SecurityEventsService, useValue: securityEvents },
         { provide: EmailVerificationService, useValue: emailVerificationService },
-        { provide: PasswordResetService, useValue: passwordResetService },
+        { provide: ActionTokensService, useValue: actionTokensService },
         { provide: MailService, useValue: mailService },
         { provide: SessionsService, useValue: sessionsService },
       ],
@@ -258,8 +258,7 @@ describe('AuthService', () => {
     expect(usersService.delete).toHaveBeenCalledWith(USER.id);
     expect(credentialsService.deleteForUser).toHaveBeenCalledWith(USER.id);
     expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
-    expect(passwordResetService.deleteForUser).toHaveBeenCalledWith(USER.id);
-    expect(emailVerificationService.deleteForUser).toHaveBeenCalledWith(USER.id);
+    expect(actionTokensService.deleteForUser).toHaveBeenCalledWith(USER.id);
     expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.AccountDeleted, { userId: USER.id });
     expect(mailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: USER.email }));

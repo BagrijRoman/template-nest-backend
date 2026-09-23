@@ -88,16 +88,14 @@ describe('Access token revocation (e2e)', () => {
     // replacing that hash with the hash of a token this test knows.
     const rawToken = 'e2e-reset-token';
     const user = await connection.collection('users').findOne({ email });
-    const updated = await connection
-      .collection('passwordresettokens')
-      .updateOne(
-        { userId: user?._id.toString() },
-        {
-          $set: {
-            tokenHash: createHash('sha256').update(rawToken).digest('hex'),
-          },
+    const updated = await connection.collection('actiontokens').updateOne(
+      { userId: user?._id.toString(), type: 'password-reset' },
+      {
+        $set: {
+          tokenHash: createHash('sha256').update(rawToken).digest('hex'),
         },
-      );
+      },
+    );
     expect(updated.modifiedCount).toBe(1);
 
     await request(app.getHttpServer())

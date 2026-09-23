@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ErrorCode } from '../common/errors/index.js';
@@ -8,25 +6,18 @@ import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { CredentialsService } from '../users/credentials.service.js';
 import { UsersService } from '../users/users.service.js';
-import { PasswordResetToken } from './entities/index.js';
+import { ActionTokensService } from './actionTokens.service.js';
+import { ActionTokenType } from './entities/index.js';
 import { PasswordResetService } from './passwordReset.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 
 const USER = { id: '507f1f77bcf86cd799439011', email: 'jane@example.com' };
-const FUTURE = new Date(Date.now() + 60_000);
-const PAST = new Date(Date.now() - 60_000);
-
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
-const withLean = <T>(value: T) => ({ lean: () => Promise.resolve(value) });
+const RESET_TOKEN = 'a'.repeat(64);
 
 describe('PasswordResetService', () => {
   let service: PasswordResetService;
 
-  const passwordResetTokenModel = {
-    create: vi.fn(),
-    deleteMany: vi.fn(),
-    findOneAndDelete: vi.fn(),
-  };
+  const actionTokensService = { issue: vi.fn(), redeem: vi.fn() };
   const usersService = { findByEmail: vi.fn(), findById: vi.fn(), markSessionsRevoked: vi.fn() };
   const credentialsService = { replacePassword: vi.fn() };
   const refreshTokensService = { revokeAllForUser: vi.fn() };
@@ -36,13 +27,13 @@ describe('PasswordResetService', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks();
-    passwordResetTokenModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+    actionTokensService.issue.mockResolvedValue(RESET_TOKEN);
     accountRateLimit.consume.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PasswordResetService,
-        { provide: getModelToken(PasswordResetToken.name), useValue: passwordResetTokenModel },
+        { provide: ActionTokensService, useValue: actionTokensService },
         { provide: UsersService, useValue: usersService },
         { provide: CredentialsService, useValue: credentialsService },
         { provide: RefreshTokensService, useValue: refreshTokensService },
@@ -60,7 +51,7 @@ describe('PasswordResetService', () => {
 
     await service.requestReset('missing@example.com');
 
-    expect(passwordResetTokenModel.create).not.toHaveBeenCalled();
+    expect(actionTokensService.issue).not.toHaveBeenCalled();
     expect(mailService.send).not.toHaveBeenCalled();
     expect(securityEvents.record).not.toHaveBeenCalled();
   });
@@ -71,33 +62,30 @@ describe('PasswordResetService', () => {
 
     await service.requestReset(USER.email);
 
-    expect(passwordResetTokenModel.create).not.toHaveBeenCalled();
+    expect(actionTokensService.issue).not.toHaveBeenCalled();
     expect(mailService.send).not.toHaveBeenCalled();
   });
 
-  it('stores only the hash of the token it emails, invalidating any previous token first', async () => {
+  it('issues a reset token for this account and emails exactly that token', async () => {
     usersService.findByEmail.mockResolvedValue(USER);
 
     await service.requestReset(USER.email);
 
-    expect(passwordResetTokenModel.deleteMany).toHaveBeenCalledWith({ userId: USER.id });
-    const stored = passwordResetTokenModel.create.mock.calls[0][0];
-    const mailedText: string = mailService.send.mock.calls[0][0].text;
-    const mailedToken = mailedText.match(/[0-9a-f]{64}/)?.[0];
-    expect(mailedToken).toBeDefined();
-    expect(stored.tokenHash).toBe(sha256(mailedToken ?? ''));
-    expect(stored.userId).toBe(USER.id);
-    expect(stored.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    const [type, userId, ttlMs] = actionTokensService.issue.mock.calls[0];
+    expect(type).toBe(ActionTokenType.PasswordReset);
+    expect(userId).toBe(USER.id);
+    expect(ttlMs).toBeGreaterThan(0);
+    expect(mailService.send.mock.calls[0][0].text).toContain(RESET_TOKEN);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.PasswordResetRequested, { userId: USER.id });
   });
 
   it('resets: consumes the token by hash, replaces the password, revokes every session, notifies', async () => {
-    passwordResetTokenModel.findOneAndDelete.mockReturnValue(withLean({ userId: USER.id, expiresAt: FUTURE }));
+    actionTokensService.redeem.mockResolvedValue(USER.id);
     usersService.findById.mockResolvedValue(USER);
 
     await service.resetPassword('raw-token', 'NewSecret123');
 
-    expect(passwordResetTokenModel.findOneAndDelete).toHaveBeenCalledWith({ tokenHash: sha256('raw-token') });
+    expect(actionTokensService.redeem).toHaveBeenCalledWith(ActionTokenType.PasswordReset, 'raw-token');
     expect(credentialsService.replacePassword).toHaveBeenCalledWith(USER.id, 'NewSecret123');
     expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
     // The other half of "sign out everywhere": access tokens issued earlier stop authenticating.
@@ -106,8 +94,8 @@ describe('PasswordResetService', () => {
     expect(mailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: USER.email }));
   });
 
-  it('rejects an unknown token with a generic 400 and changes nothing', async () => {
-    passwordResetTokenModel.findOneAndDelete.mockReturnValue(withLean(null));
+  it('rejects a token the store refuses — unknown, expired, used or issued for another action', async () => {
+    actionTokensService.redeem.mockResolvedValue(null);
 
     await expect(service.resetPassword('forged', 'NewSecret123')).rejects.toMatchObject({
       code: ErrorCode.InvalidResetToken,
@@ -119,22 +107,11 @@ describe('PasswordResetService', () => {
   });
 
   it('rejects a token whose account vanished, without touching credentials', async () => {
-    passwordResetTokenModel.findOneAndDelete.mockReturnValue(withLean({ userId: USER.id, expiresAt: FUTURE }));
+    actionTokensService.redeem.mockResolvedValue(USER.id);
     usersService.findById.mockResolvedValue(null);
 
     await expect(service.resetPassword('orphaned', 'NewSecret123')).rejects.toMatchObject({
       code: ErrorCode.InvalidResetToken,
-    });
-    expect(credentialsService.replacePassword).not.toHaveBeenCalled();
-  });
-
-  it('rejects a logically expired token even before TTL purges it, with the same 400', async () => {
-    passwordResetTokenModel.findOneAndDelete.mockReturnValue(withLean({ userId: USER.id, expiresAt: PAST }));
-
-    await expect(service.resetPassword('stale', 'NewSecret123')).rejects.toMatchObject({
-      code: ErrorCode.InvalidResetToken,
-      message: 'Invalid or expired reset token',
-      details: [{ field: 'token' }],
     });
     expect(credentialsService.replacePassword).not.toHaveBeenCalled();
   });

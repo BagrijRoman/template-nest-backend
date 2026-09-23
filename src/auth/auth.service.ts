@@ -14,7 +14,7 @@ import {
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { EmailVerificationService } from './emailVerification.service.js';
 import { MailService } from '../common/mail/mail.service.js';
-import { PasswordResetService } from './passwordReset.service.js';
+import { ActionTokensService } from './actionTokens.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 import type { ClientInfo, SessionSummary } from './sessions.service.js';
 import { SessionsService } from './sessions.service.js';
@@ -37,7 +37,7 @@ export class AuthService {
     private readonly signInLockoutService: SignInLockoutService,
     private readonly securityEvents: SecurityEventsService,
     private readonly emailVerificationService: EmailVerificationService,
-    private readonly passwordResetService: PasswordResetService,
+    private readonly actionTokensService: ActionTokensService,
     private readonly mailService: MailService,
     private readonly sessionsService: SessionsService,
   ) {}
@@ -197,8 +197,7 @@ export class AuthService {
     await Promise.all([
       this.credentialsService.deleteForUser(userId),
       this.refreshTokensService.revokeAllForUser(userId),
-      this.passwordResetService.deleteForUser(userId),
-      this.emailVerificationService.deleteForUser(userId),
+      this.actionTokensService.deleteForUser(userId),
       this.signInLockoutService.reset(user.email),
     ]);
 
