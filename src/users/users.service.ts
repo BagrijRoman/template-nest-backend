@@ -2,17 +2,19 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppException, ErrorCode } from '../common/errors/index.js';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { CredentialsService } from './credentials.service.js';
+import { CreateUserDto, UpdateProfileDto } from './dto/index.js';
+import { User, UserProfile, UserRole } from './entities/index.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
-import { BreachedPasswordsService } from './breachedPasswords.service.js';
-import { CreateUserDto } from './dto/index.js';
-import { SafeUser, User } from './entities/index.js';
-import { DUMMY_PASSWORD_HASH, hashPassword, verifyPasswordHash } from './password.util.js';
-
-const BREACHED_PASSWORD_MESSAGE = 'This password has appeared in a known data breach — please choose a different one';
 
 const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
 
 type LeanUser = User & { _id: Types.ObjectId };
+
+export type UserPage = { data: UserProfile[]; total: number; limit: number; offset: number };
+
+/** What JwtAuthGuard needs: who the caller is, plus the cutoff that retires older access tokens. */
+export type AuthenticationRecord = { user: UserProfile; sessionsValidFrom: Date | null };
 
 const isDuplicateKeyError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: number }).code === MONGO_DUPLICATE_KEY_ERROR_CODE;
@@ -26,119 +28,121 @@ const duplicateEmailException = (email: string): AppException =>
     `User with email "${email}" already exists`,
   );
 
-const breachedPasswordException = (field: string): AppException =>
-  AppException.forField(
-    HttpStatus.BAD_REQUEST,
-    ErrorCode.BreachedPassword,
-    field,
-    'notBreached',
-    BREACHED_PASSWORD_MESSAGE,
-  );
-
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
-    private readonly breachedPasswordsService: BreachedPasswordsService,
+    private readonly credentialsService: CredentialsService,
     private readonly securityEvents: SecurityEventsService,
   ) {}
 
-  async create(createUserDto: CreateUserDto): Promise<SafeUser> {
+  /** Creates the account and its password credential; every check runs before the first write. */
+  async create(createUserDto: CreateUserDto): Promise<UserProfile> {
     // Fast application-level check; the unique index stays the race-safe guard (its violation is translated below).
     if (await this.userModel.exists({ email: createUserDto.email })) {
       throw duplicateEmailException(createUserDto.email);
     }
+    await this.credentialsService.assertNotBreached(createUserDto.password, 'password', { email: createUserDto.email });
 
-    if (await this.breachedPasswordsService.isBreached(createUserDto.password)) {
-      this.securityEvents.record(SecurityEvent.BreachedPasswordRejected, { email: createUserDto.email });
-      throw breachedPasswordException('password');
-    }
-
+    const user = await this.insert(createUserDto);
+    // Two documents and no transaction (a standalone MongoDB has none): undo the user when the
+    // credential insert fails, so no account is ever left without a way to sign in.
     try {
-      const created = await this.userModel.create({
-        email: createUserDto.email,
-        firstName: createUserDto.firstName,
-        lastName: createUserDto.lastName,
-        passwordHash: await hashPassword(createUserDto.password),
-      });
-      return this.toSafeUser(created.toObject());
+      await this.credentialsService.createPassword(user.id, createUserDto.password);
     } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        throw duplicateEmailException(createUserDto.email);
-      }
+      await this.userModel.deleteOne({ _id: user.id });
       throw error;
     }
+    return user;
   }
 
-  async findById(id: string): Promise<SafeUser | null> {
+  async findById(id: string): Promise<UserProfile | null> {
     // An invalid ObjectId would make Mongoose throw a CastError — treat it as "not found" instead.
     if (!Types.ObjectId.isValid(id)) {
       return null;
     }
     const user = await this.userModel.findById(id).lean();
-    return user ? this.toSafeUser(user) : null;
+    return user ? this.toUserProfile(user) : null;
   }
 
-  async findByEmail(email: string): Promise<SafeUser | null> {
-    const user = await this.userModel.findOne({ email }).lean();
-    return user ? this.toSafeUser(user) : null;
-  }
-
-  /** Checks credentials without ever exposing the stored hash. Returns the user on success. */
-  async verifyPassword(email: string, password: string): Promise<SafeUser | null> {
-    const user = await this.userModel.findOne({ email }).lean();
-    // An unknown email pays the same scrypt cost as a wrong password — response timing must not
-    // reveal whether an account exists.
-    const isValid = await verifyPasswordHash(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
-    return user && isValid ? this.toSafeUser(user) : null;
-  }
-
-  /**
-   * Verifies the current password and replaces the hash. Returns the user, or null when the
-   * account is gone or the current password is wrong — indistinguishable on purpose.
-   */
-  async updatePassword(id: string, currentPassword: string, newPassword: string): Promise<SafeUser | null> {
+  /** The per-request authentication read; the cutoff stays out of `UserProfile` so it cannot leak into a response. */
+  async findForAuthentication(id: string): Promise<AuthenticationRecord | null> {
     if (!Types.ObjectId.isValid(id)) {
       return null;
     }
     const user = await this.userModel.findById(id).lean();
-    if (!user || !(await verifyPasswordHash(currentPassword, user.passwordHash))) {
-      return null;
-    }
-
-    return this.replacePassword(id, newPassword);
+    return user ? { user: this.toUserProfile(user), sessionsValidFrom: user.sessionsValidFrom ?? null } : null;
   }
 
   /**
-   * Sets a new password WITHOUT any proof of the current one — only for flows that established
-   * ownership another way (change-password verifies the current password first; the reset flow
-   * proves control of the email). Never expose this through a controller directly.
+   * Retires every access token issued so far, the counterpart to revoking the refresh tokens:
+   * without it a stolen access token would outlive a password change by its whole TTL.
    */
-  async replacePassword(id: string, newPassword: string): Promise<SafeUser | null> {
+  async markSessionsRevoked(id: string): Promise<void> {
+    await this.userModel.updateOne({ _id: id }, { sessionsValidFrom: new Date() });
+  }
+
+  async findByEmail(email: string): Promise<UserProfile | null> {
+    const user = await this.userModel.findOne({ email }).lean();
+    return user ? this.toUserProfile(user) : null;
+  }
+
+  /** Newest first; `total` lets clients compute page counts. */
+  async findPage(limit: number, offset: number): Promise<UserPage> {
+    const [users, total] = await Promise.all([
+      this.userModel.find().sort({ createdAt: -1, _id: -1 }).skip(offset).limit(limit).lean(),
+      this.userModel.countDocuments(),
+    ]);
+    return { data: users.map((user) => this.toUserProfile(user)), total, limit, offset };
+  }
+
+  /** Operator action (see `npm run user:set-role`); there is deliberately no endpoint for it. */
+  async setRole(email: string, role: UserRole): Promise<UserProfile | null> {
+    const updated = await this.userModel.findOneAndUpdate({ email }, { role }, { new: true }).lean();
+    if (!updated) {
+      return null;
+    }
+    this.securityEvents.record(SecurityEvent.UserRoleChanged, { userId: updated._id.toString(), role });
+    return this.toUserProfile(updated);
+  }
+
+  async updateProfile(id: string, updateProfileDto: UpdateProfileDto): Promise<UserProfile | null> {
     if (!Types.ObjectId.isValid(id)) {
       return null;
     }
-
-    if (await this.breachedPasswordsService.isBreached(newPassword)) {
-      this.securityEvents.record(SecurityEvent.BreachedPasswordRejected, { userId: id });
-      throw breachedPasswordException('newPassword');
-    }
-
-    const updated = await this.userModel
-      .findByIdAndUpdate(id, { passwordHash: await hashPassword(newPassword) }, { new: true })
-      .lean();
-    return updated ? this.toSafeUser(updated) : null;
+    const updated = await this.userModel.findByIdAndUpdate(id, updateProfileDto, { new: true }).lean();
+    return updated ? this.toUserProfile(updated) : null;
   }
 
-  async markEmailVerified(id: string): Promise<SafeUser | null> {
+  /**
+   * Removes the account row only; the data other modules own is deleted by those modules
+   * (see `AuthService.deleteAccount`, which orchestrates the whole cascade).
+   */
+  async delete(id: string): Promise<void> {
+    await this.userModel.deleteOne({ _id: id });
+  }
+
+  async markEmailVerified(id: string): Promise<UserProfile | null> {
     if (!Types.ObjectId.isValid(id)) {
       return null;
     }
     const updated = await this.userModel.findByIdAndUpdate(id, { emailVerified: true }, { new: true }).lean();
-    return updated ? this.toSafeUser(updated) : null;
+    return updated ? this.toUserProfile(updated) : null;
   }
 
-  private toSafeUser(user: LeanUser): SafeUser {
+  private async insert({ email, firstName, lastName }: CreateUserDto): Promise<UserProfile> {
+    try {
+      const created = await this.userModel.create({ email, firstName, lastName });
+      return this.toUserProfile(created.toObject());
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        throw duplicateEmailException(email);
+      }
+      throw error;
+    }
+  }
+
+  private toUserProfile(user: LeanUser): UserProfile {
     return {
       id: user._id.toString(),
       email: user.email,
@@ -146,6 +150,8 @@ export class UsersService {
       lastName: user.lastName,
       // Pre-flag documents lack the field; they are unverified by definition.
       emailVerified: user.emailVerified ?? false,
+      // Same for the role: documents from before the field are plain users.
+      role: user.role ?? UserRole.User,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

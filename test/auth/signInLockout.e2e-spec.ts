@@ -3,12 +3,12 @@ import { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { Server } from 'node:http';
 import { AppModule } from '../../src/app.module.js';
 import { MAX_FAILED_SIGN_IN_ATTEMPTS } from '../../src/auth/auth.constants.js';
 
 describe('Sign-in lockout (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication<Server>;
   let connection: Connection;
 
   // Email is unique to this spec file: e2e files run in parallel against the same database.

@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, trusted } from 'mongoose';
 import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
-import type { SafeUser } from '../users/entities/index.js';
+import type { UserProfile } from '../users/entities/index.js';
 import { AccountActionCounter } from './entities/index.js';
 
 const MS_PER_MINUTE = 60_000;
@@ -28,7 +28,7 @@ export class AccountRateLimitService {
    * a refusal surfaces: authenticated endpoints answer an honest 429, public ones stay silent —
    * a 429 there would reveal that the email belongs to an account.
    */
-  async consume(action: string, user: SafeUser, limit: number, windowMs: number): Promise<boolean> {
+  async consume(action: string, user: UserProfile, limit: number, windowMs: number): Promise<boolean> {
     const key = `${action}:${user.id}`;
 
     // A logically expired counter must not leak stale counts while it awaits TTL purging.

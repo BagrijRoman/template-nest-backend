@@ -1,17 +1,15 @@
-import { createHash, randomBytes } from 'node:crypto';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppException, ErrorCode } from '../common/errors/index.js';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { CredentialsService } from '../users/credentials.service.js';
 import { UsersService } from '../users/users.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
+import { ActionTokensService } from './actionTokens.service.js';
 import { EMAIL_ACTION_LIMIT, EMAIL_ACTION_WINDOW_MS, PASSWORD_RESET_TOKEN_TTL_MS } from './auth.constants.js';
-import { PasswordResetToken } from './entities/index.js';
+import { ActionTokenType } from './entities/index.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
 
-const RESET_TOKEN_BYTES = 32;
 const PASSWORD_RESET_EMAIL_ACTION = 'password-reset-email';
 const INVALID_TOKEN_MESSAGE = 'Invalid or expired reset token';
 
@@ -24,13 +22,12 @@ const invalidTokenException = (): AppException =>
     INVALID_TOKEN_MESSAGE,
   );
 
-const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
-
 @Injectable()
 export class PasswordResetService {
   constructor(
-    @InjectModel(PasswordResetToken.name) private readonly passwordResetTokenModel: Model<PasswordResetToken>,
+    private readonly actionTokensService: ActionTokensService,
     private readonly usersService: UsersService,
+    private readonly credentialsService: CredentialsService,
     private readonly refreshTokensService: RefreshTokensService,
     private readonly mailService: MailService,
     private readonly securityEvents: SecurityEventsService,
@@ -39,8 +36,8 @@ export class PasswordResetService {
 
   /**
    * Silently does nothing for unknown emails — the endpoint answers 204 either way, so neither
-   * the response nor its side effects reveal whether an account exists. A new request invalidates
-   * any previous token: exactly one reset token per user is redeemable at a time.
+   * the response nor its side effects reveal whether an account exists. Issuing invalidates any
+   * previous reset token: exactly one is redeemable at a time.
    */
   async requestReset(email: string): Promise<void> {
     const user = await this.usersService.findByEmail(email);
@@ -60,14 +57,11 @@ export class PasswordResetService {
       return;
     }
 
-    await this.passwordResetTokenModel.deleteMany({ userId: user.id });
-
-    const token = randomBytes(RESET_TOKEN_BYTES).toString('hex');
-    await this.passwordResetTokenModel.create({
-      tokenHash: hashToken(token),
-      userId: user.id,
-      expiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
-    });
+    const token = await this.actionTokensService.issue(
+      ActionTokenType.PasswordReset,
+      user.id,
+      PASSWORD_RESET_TOKEN_TTL_MS,
+    );
 
     this.securityEvents.record(SecurityEvent.PasswordResetRequested, { userId: user.id });
     await this.mailService.send({
@@ -86,18 +80,24 @@ export class PasswordResetService {
    * is signed out everywhere. Expired, already-used and forged tokens get the same generic 400.
    */
   async resetPassword(token: string, newPassword: string): Promise<void> {
-    const record = await this.passwordResetTokenModel.findOneAndDelete({ tokenHash: hashToken(token) }).lean();
-    if (!record || record.expiresAt <= new Date()) {
+    const userId = await this.actionTokensService.redeem(ActionTokenType.PasswordReset, token);
+    if (!userId) {
       throw invalidTokenException();
     }
 
-    const user = await this.usersService.replacePassword(record.userId, newPassword);
+    const user = await this.usersService.findById(userId);
     if (!user) {
       // The account vanished after the token was issued; the token is already consumed.
       throw invalidTokenException();
     }
+    await this.credentialsService.replacePassword(user.id, newPassword);
 
-    await this.refreshTokensService.revokeAllForUser(user.id);
+    // Both halves of "sign out everywhere": stored refresh tokens die, and access tokens issued
+    // before now stop authenticating.
+    await Promise.all([
+      this.refreshTokensService.revokeAllForUser(user.id),
+      this.usersService.markSessionsRevoked(user.id),
+    ]);
     this.securityEvents.record(SecurityEvent.PasswordResetCompleted, { userId: user.id });
     await this.mailService.send({
       to: user.email,

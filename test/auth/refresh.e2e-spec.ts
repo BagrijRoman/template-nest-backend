@@ -3,13 +3,13 @@ import { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { Server } from 'node:http';
 import { AppModule } from '../../src/app.module.js';
 
 const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/;
 
 describe('POST /auth/refresh (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication<Server>;
   let connection: Connection;
   let userId: string;
   let refreshToken: string;
@@ -129,7 +129,7 @@ describe('POST /auth/refresh (e2e)', () => {
     const live = after.find((record) => record.consumedAt === null);
     expect(consumed?.tokenHash).toBe(before[0].tokenHash);
     expect(live?.tokenHash).not.toBe(before[0].tokenHash);
-    expect(live?.familyId).toBe(before[0].familyId);
+    expect(live?.sessionId).toBe(before[0].sessionId);
   });
 
   it('lets only one of two concurrent redemptions of the same token win', async () => {

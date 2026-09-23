@@ -3,7 +3,7 @@ import { HydratedDocument } from 'mongoose';
 
 // Server-side refresh-token store: only the sha256 hash of a token is persisted, so a database
 // leak exposes nothing replayable. An unconsumed record is what makes a token redeemable —
-// deleting a family's records is revocation.
+// deleting a session's records is revocation.
 @Schema()
 export class RefreshToken {
   @Prop({ required: true, unique: true })
@@ -12,11 +12,11 @@ export class RefreshToken {
   @Prop({ required: true })
   userId: string;
 
-  // One family = one device session: sign-in starts a family, rotation stays inside it.
-  // Reuse of a consumed token revokes the whole family (theft signal) without touching
-  // the user's other sessions.
+  // The device session this token belongs to (`Session._id` as a string): sign-in starts one,
+  // rotation stays inside it. Reuse of a consumed token revokes the whole session (theft signal)
+  // without touching the user's other devices.
   @Prop({ required: true, index: true })
-  familyId: string;
+  sessionId: string;
 
   // Consumed records are kept until their TTL, not deleted: a replayed token must be
   // distinguishable from a forged one — that is what makes reuse detectable.

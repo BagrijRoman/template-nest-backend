@@ -35,6 +35,8 @@ migrate-mongo · GitHub Actions.
 - **CORS whitelist** from the env; unset means disabled; wildcard forbidden.
 - **Rate limiting** per IP in two windows (sustained and burst), a stricter profile on `/auth/*`, plus
   per-account counters for every email-sending action, with a single security-alert email when a cap is first hit.
+  Behind a reverse proxy the client IP comes from a validated `TRUST_PROXY` hop count or whitelist, never from an
+  unverified header.
 - **Request body size cap**, answered with a 413 in the standard error shape.
 - **NoSQL injection protection**: DTO validation on top of a global Mongoose `sanitizeFilter`.
 - **Security audit events**: every auth action goes through one structured-event funnel; suspicious events at
@@ -47,23 +49,37 @@ migrate-mongo · GitHub Actions.
 - **Sign-up and sign-in with email** (`POST /auth/sign-up`, `POST /auth/sign-in`): password strength rules,
   normalisation, race-safe duplicate handling, and two-layer anti-enumeration on sign-in (identical 401 plus
   equalised hashing time).
-- **Password hashing** with salted async scrypt and timing-safe comparison.
+- **Password hashing** with salted async scrypt and timing-safe comparison; hashes live in a separate `credentials` collection, apart from `users`.
 - **JWT access + refresh token pairs** with distinct secrets and minimal payloads.
-- **Refresh tokens stored server-side as hashes**, single-use, rotated on every `POST /auth/refresh`, grouped
-  into families (one per device session). A replayed token revokes its whole family and leaves other sessions alone.
-- **Logout** (`POST /auth/logout`), idempotent.
+- **Refresh tokens stored server-side as hashes**, single-use, rotated on every `POST /auth/refresh`, each one
+  belonging to a device session. A replayed token revokes that whole session and leaves the other devices alone.
+- **Device sessions** with the User-Agent and address they were last seen from: `GET /auth/sessions` is the device
+  list with the current device marked, `DELETE /auth/sessions/:id` signs one out. Per-device data such as a push
+  notification token belongs on that document.
+- **Logout** (`POST /auth/logout`), idempotent, ending that device's session.
 - **Per-account sign-in lockout**: five failures lock the email for a sliding 15-minute window, unknown emails
   lock identically, the owner is notified.
 - **Change password** (`POST /auth/change-password`): requires the current password, feeds the lockout on failure,
-  revokes every session and returns a fresh one.
+  revokes every session — refresh tokens deleted and earlier access tokens refused from that moment — and returns
+  a fresh one.
 - **Forgot / reset password** (`POST /auth/forgot-password`, `POST /auth/reset-password`): single-use hashed
   token, 30-minute TTL, anti-enumeration 204, reset revokes every session.
 - **Email verification** (`POST /auth/verify-email`, `POST /auth/resend-verification`,
   `POST /auth/send-verification`): `emailVerified` flag, single-use hashed token with a 24-hour TTL sent at sign-up.
+- **One store for mailed single-use tokens**, each row naming the action it authorizes, so a token cannot be spent
+  on a different flow and a new flow (an invite, a magic link) costs an enum value rather than a collection.
 - **Global auth guard, default-closed**: every route needs a bearer access token unless marked `@Public()`;
-  `@CurrentUser()` gives handlers the caller.
-- **Users**: Mongoose model with a unique email index and a safe response shape (the hash never leaves the
-  service layer); `GET /users/me` as the reference protected endpoint.
+  the guard loads the account behind the token, so `@CurrentUser()` gives handlers the caller as stored right now
+  and a deletion, role change or session revocation applies immediately.
+- **Users**: Mongoose model with a unique email index and a secret-free response shape; `GET /users/me` as the
+  reference protected endpoint.
+- **Roles** (`user` | `admin`): `@Roles()` + a global `RolesGuard` that reads the current role from the database;
+  `GET /users` (admin only, paginated `limit`/`offset` envelope) as the reference; roles are granted by the
+  operator CLI `npm run user:set-role`, never through the API.
+- **Profile updates** (`PATCH /users/me`) for the fields an owner may change on their own; the email and the role
+  are deliberately not among them.
+- **Account deletion** (`POST /auth/delete-account`): current password required, every collection holding the
+  account's data is cleaned out, the email becomes free again and the tokens stop working at once.
 - **Mail** goes through a `MailService` with a stub transport that logs instead of sending; a real provider
   plugs in as an adapter.
 
@@ -79,8 +95,8 @@ migrate-mongo · GitHub Actions.
 
 | Level                                  | Files | Runner             | Needs                                                         |
 | -------------------------------------- | ----- | ------------------ | ------------------------------------------------------------- |
-| unit (`*.spec.ts`, next to the source) | 20    | `npm test`         | nothing: models and transports are mocked                     |
-| e2e (`test/**/*.e2e-spec.ts`)          | 19    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
+| unit (`*.spec.ts`, next to the source) | 28    | `npm test`         | nothing: models and transports are mocked                     |
+| e2e (`test/**/*.e2e-spec.ts`)          | 30    | `npm run test:e2e` | an in-memory MongoDB per spec file, started by the test setup |
 
 E2e tests share the production app wiring (`setupApp`), so what they prove is what runs.
 
@@ -89,8 +105,6 @@ E2e tests share the production app wiring (`setupApp`), so what they prove is wh
 Listed as future scope in [WORKLOG.md](WORKLOG.md#not-implemented-future-scope):
 
 - a real mail transport adapter for the existing `MailService` stub;
-- user roles;
-- user profile CRUD (`PATCH /users/me`, account deletion);
 - Docker setup (Dockerfile and docker-compose with MongoDB).
 
 ## Repository map

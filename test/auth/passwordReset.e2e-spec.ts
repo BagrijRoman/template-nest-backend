@@ -3,7 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { Server } from 'node:http';
 import { AppModule } from '../../src/app.module.js';
 import {
   MailMessage,
@@ -11,7 +11,7 @@ import {
 } from '../../src/common/mail/mail.service.js';
 
 describe('Password reset flow (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication<Server>;
   let connection: Connection;
   let refreshToken: string;
   let sentMails: MailMessage[];

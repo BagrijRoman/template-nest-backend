@@ -1,14 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { Server } from 'node:http';
 import { AppModule } from '../../src/app.module.js';
 import { BreachedPasswordsService } from '../../src/users/breachedPasswords.service.js';
 
 // The external HIBP API is disabled for e2e runs (test/setup/mongoMemoryServer.ts); this spec
 // overrides the provider to verify the wiring: a breached verdict must block password-setting flows.
 describe('Breached password rejection (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication<Server>;
 
   // Email is unique to this spec file: e2e files run in parallel against the same database.
   const email = 'breached.jane@example.com';

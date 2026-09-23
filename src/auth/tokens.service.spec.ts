@@ -7,6 +7,7 @@ import { TokensService } from './tokens.service.js';
 const ACCESS_SECRET = 'test-access-secret-of-32-plus-characters';
 const REFRESH_SECRET = 'test-refresh-secret-of-32-plus-characters';
 const USER_ID = '507f1f77bcf86cd799439011';
+const SESSION_ID = '65f1a2b3c4d5e6f7a8b9c0d1';
 
 const envMock: Record<string, string> = {
   JWT_ACCESS_SECRET: ACCESS_SECRET,
@@ -32,11 +33,12 @@ describe('TokensService', () => {
     service = module.get<TokensService>(TokensService);
   });
 
-  it('issues a pair whose tokens verify with their own secret and carry only the user id', async () => {
-    const { accessToken, refreshToken } = await service.issueTokenPair(USER_ID);
+  it('issues a pair whose tokens verify with their own secret and name the user and session', async () => {
+    const { accessToken, refreshToken } = await service.issueTokenPair(USER_ID, SESSION_ID);
 
     const accessPayload = await service.verifyAccessToken(accessToken);
     expect(accessPayload?.sub).toBe(USER_ID);
+    expect(accessPayload?.sid).toBe(SESSION_ID);
 
     const refreshPayload = await service.verifyRefreshToken(refreshToken);
     expect(refreshPayload?.sub).toBe(USER_ID);
@@ -44,7 +46,7 @@ describe('TokensService', () => {
   });
 
   it('rejects an access token presented as a refresh token and vice versa', async () => {
-    const { accessToken, refreshToken } = await service.issueTokenPair(USER_ID);
+    const { accessToken, refreshToken } = await service.issueTokenPair(USER_ID, SESSION_ID);
 
     expect(await service.verifyRefreshToken(accessToken)).toBeNull();
     expect(await service.verifyAccessToken(refreshToken)).toBeNull();
@@ -71,16 +73,19 @@ describe('TokensService', () => {
   });
 
   it('issues distinct refresh tokens for the same user back-to-back', async () => {
-    const [first, second] = await Promise.all([service.issueTokenPair(USER_ID), service.issueTokenPair(USER_ID)]);
+    const [first, second] = await Promise.all([
+      service.issueTokenPair(USER_ID, SESSION_ID),
+      service.issueTokenPair(USER_ID, SESSION_ID),
+    ]);
 
     expect(first.refreshToken).not.toBe(second.refreshToken);
   });
 
-  it('never puts anything beyond sub/jti and standard claims into payloads', async () => {
-    const { accessToken, refreshToken } = await service.issueTokenPair(USER_ID);
+  it('never puts anything beyond sub/sid/jti and standard claims into payloads', async () => {
+    const { accessToken, refreshToken } = await service.issueTokenPair(USER_ID, SESSION_ID);
 
     const decode = (token: string) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
-    expect(Object.keys(decode(accessToken)).sort()).toEqual(['exp', 'iat', 'sub']);
+    expect(Object.keys(decode(accessToken)).sort()).toEqual(['exp', 'iat', 'sid', 'sub']);
     expect(Object.keys(decode(refreshToken)).sort()).toEqual(['exp', 'iat', 'jti', 'sub']);
   });
 });

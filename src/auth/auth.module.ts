@@ -6,22 +6,24 @@ import { SecurityEventsModule } from '../common/securityEvents/securityEvents.mo
 import { UsersModule } from '../users/users.module.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { AuthController } from './auth.controller.js';
+import { ActionTokensService } from './actionTokens.service.js';
 import { AuthService } from './auth.service.js';
 import { EmailVerificationService } from './emailVerification.service.js';
 import {
   AccountActionCounter,
   AccountActionCounterSchema,
-  EmailVerificationToken,
-  EmailVerificationTokenSchema,
-  PasswordResetToken,
-  PasswordResetTokenSchema,
+  ActionToken,
+  ActionTokenSchema,
   RefreshToken,
   RefreshTokenSchema,
+  Session,
+  SessionSchema,
   SignInAttempt,
   SignInAttemptSchema,
 } from './entities/index.js';
 import { PasswordResetService } from './passwordReset.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
+import { SessionsService } from './sessions.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
 
@@ -35,19 +37,21 @@ import { TokensService } from './tokens.service.js';
     JwtModule.register({}),
     MongooseModule.forFeature([
       { name: AccountActionCounter.name, schema: AccountActionCounterSchema },
-      { name: EmailVerificationToken.name, schema: EmailVerificationTokenSchema },
-      { name: PasswordResetToken.name, schema: PasswordResetTokenSchema },
+      { name: ActionToken.name, schema: ActionTokenSchema },
       { name: RefreshToken.name, schema: RefreshTokenSchema },
+      { name: Session.name, schema: SessionSchema },
       { name: SignInAttempt.name, schema: SignInAttemptSchema },
     ]),
   ],
   controllers: [AuthController],
   providers: [
     AccountRateLimitService,
+    ActionTokensService,
     AuthService,
     EmailVerificationService,
     PasswordResetService,
     RefreshTokensService,
+    SessionsService,
     SignInLockoutService,
     TokensService,
   ],

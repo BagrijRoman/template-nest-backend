@@ -1,43 +1,45 @@
-import { createHash } from 'node:crypto';
-import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ErrorCode } from '../common/errors/index.js';
 import { MailService } from '../common/mail/mail.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { UserRole, type UserProfile } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
-import { EmailVerificationToken } from './entities/index.js';
+import { ActionTokensService } from './actionTokens.service.js';
+import { ActionTokenType } from './entities/index.js';
 import { EmailVerificationService } from './emailVerification.service.js';
 
-const USER = { id: '507f1f77bcf86cd799439011', email: 'jane@example.com', emailVerified: false };
-const FUTURE = new Date(Date.now() + 60_000);
-
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
-const withLean = <T>(value: T) => ({ lean: () => Promise.resolve(value) });
+const USER: UserProfile = {
+  id: '507f1f77bcf86cd799439011',
+  email: 'jane@example.com',
+  firstName: 'Jane',
+  lastName: 'Doe',
+  emailVerified: false,
+  role: UserRole.User,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+const VERIFICATION_TOKEN = 'b'.repeat(64);
 
 describe('EmailVerificationService', () => {
   let service: EmailVerificationService;
 
-  const emailVerificationTokenModel = {
-    create: vi.fn(),
-    deleteMany: vi.fn(),
-    findOneAndDelete: vi.fn(),
-  };
-  const usersService = { findByEmail: vi.fn(), markEmailVerified: vi.fn() };
+  const actionTokensService = { issue: vi.fn(), redeem: vi.fn() };
+  const usersService = { findByEmail: vi.fn(), findById: vi.fn(), markEmailVerified: vi.fn() };
   const mailService = { send: vi.fn() };
   const securityEvents = { record: vi.fn() };
   const accountRateLimit = { consume: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
-    emailVerificationTokenModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
+    actionTokensService.issue.mockResolvedValue(VERIFICATION_TOKEN);
     accountRateLimit.consume.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EmailVerificationService,
-        { provide: getModelToken(EmailVerificationToken.name), useValue: emailVerificationTokenModel },
+        { provide: ActionTokensService, useValue: actionTokensService },
         { provide: UsersService, useValue: usersService },
         { provide: MailService, useValue: mailService },
         { provide: SecurityEventsService, useValue: securityEvents },
@@ -48,39 +50,36 @@ describe('EmailVerificationService', () => {
     service = module.get<EmailVerificationService>(EmailVerificationService);
   });
 
-  it('stores only the hash of the token it emails, invalidating any previous token first', async () => {
+  it('issues a verification token for this account and emails exactly that token', async () => {
     await service.sendVerification(USER);
 
-    expect(emailVerificationTokenModel.deleteMany).toHaveBeenCalledWith({ userId: USER.id });
-    const stored = emailVerificationTokenModel.create.mock.calls[0][0];
-    const mailedToken = mailService.send.mock.calls[0][0].text.match(/[0-9a-f]{64}/)?.[0];
-    expect(mailedToken).toBeDefined();
-    expect(stored.tokenHash).toBe(sha256(mailedToken ?? ''));
+    const [type, userId, ttlMs] = actionTokensService.issue.mock.calls[0];
+    expect(type).toBe(ActionTokenType.EmailVerification);
+    expect(userId).toBe(USER.id);
+    expect(ttlMs).toBeGreaterThan(0);
+    expect(mailService.send.mock.calls[0][0].text).toContain(VERIFICATION_TOKEN);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.EmailVerificationSent, { userId: USER.id });
   });
 
   it('verifies: consumes the token by hash and marks the account verified', async () => {
-    emailVerificationTokenModel.findOneAndDelete.mockReturnValue(withLean({ userId: USER.id, expiresAt: FUTURE }));
+    actionTokensService.redeem.mockResolvedValue(USER.id);
     usersService.markEmailVerified.mockResolvedValue({ ...USER, emailVerified: true });
 
     await service.verify('raw-token');
 
-    expect(emailVerificationTokenModel.findOneAndDelete).toHaveBeenCalledWith({ tokenHash: sha256('raw-token') });
+    expect(actionTokensService.redeem).toHaveBeenCalledWith(ActionTokenType.EmailVerification, 'raw-token');
     expect(usersService.markEmailVerified).toHaveBeenCalledWith(USER.id);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.EmailVerified, { userId: USER.id });
   });
 
-  it('rejects unknown and expired tokens with the same generic 400', async () => {
-    emailVerificationTokenModel.findOneAndDelete.mockReturnValue(withLean(null));
+  it('rejects every token the store refuses with the same generic 400', async () => {
+    actionTokensService.redeem.mockResolvedValue(null);
     await expect(service.verify('forged')).rejects.toMatchObject({
       code: ErrorCode.InvalidVerificationToken,
       message: 'Invalid or expired verification token',
       details: [{ field: 'token' }],
     });
 
-    emailVerificationTokenModel.findOneAndDelete.mockReturnValue(
-      withLean({ userId: USER.id, expiresAt: new Date(Date.now() - 1000) }),
-    );
     await expect(service.verify('stale')).rejects.toMatchObject({
       code: ErrorCode.InvalidVerificationToken,
       message: 'Invalid or expired verification token',
@@ -90,7 +89,7 @@ describe('EmailVerificationService', () => {
   });
 
   it('sends for an authenticated unverified caller identified by id', async () => {
-    usersService.findById = vi.fn().mockResolvedValue(USER);
+    usersService.findById.mockResolvedValue(USER);
 
     await service.requestVerification(USER.id);
 
@@ -98,10 +97,10 @@ describe('EmailVerificationService', () => {
   });
 
   it('answers the authenticated caller honestly: 400 when already verified, 429 when over the cap', async () => {
-    usersService.findById = vi.fn().mockResolvedValue({ ...USER, emailVerified: true });
+    usersService.findById.mockResolvedValue({ ...USER, emailVerified: true });
     await expect(service.requestVerification(USER.id)).rejects.toThrow('Email is already verified');
 
-    usersService.findById = vi.fn().mockResolvedValue(USER);
+    usersService.findById.mockResolvedValue(USER);
     accountRateLimit.consume.mockResolvedValue(false);
     await expect(service.requestVerification(USER.id)).rejects.toThrow(
       'Too many verification emails requested, try again later',
@@ -116,7 +115,7 @@ describe('EmailVerificationService', () => {
     await service.resend(USER.email);
 
     expect(mailService.send).not.toHaveBeenCalled();
-    expect(emailVerificationTokenModel.create).not.toHaveBeenCalled();
+    expect(actionTokensService.issue).not.toHaveBeenCalled();
   });
 
   it('resends silently for an unverified account only', async () => {
@@ -135,6 +134,6 @@ describe('EmailVerificationService', () => {
     await service.resend(USER.email);
 
     expect(mailService.send).not.toHaveBeenCalled();
-    expect(emailVerificationTokenModel.create).not.toHaveBeenCalled();
+    expect(actionTokensService.issue).not.toHaveBeenCalled();
   });
 });

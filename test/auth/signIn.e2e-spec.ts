@@ -3,14 +3,14 @@ import { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { Server } from 'node:http';
 import { AppModule } from '../../src/app.module.js';
 
 const JWT_PATTERN = /^[\w-]+\.[\w-]+\.[\w-]+$/;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
 describe('POST /auth/sign-in (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication<Server>;
   let connection: Connection;
   let userId: string;
 

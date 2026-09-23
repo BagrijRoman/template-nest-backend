@@ -2,11 +2,15 @@ import { HttpException } from '@nestjs/common';
 import { AppException, ErrorCode } from '../common/errors/index.js';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CredentialsService } from '../users/credentials.service.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
 import { EmailVerificationService } from './emailVerification.service.js';
+import { MailService } from '../common/mail/mail.service.js';
+import { ActionTokensService } from './actionTokens.service.js';
 import { RefreshTokensService } from './refreshTokens.service.js';
+import { SessionsService } from './sessions.service.js';
 import { SignInLockoutService } from './signInLockout.service.js';
 import { TokensService } from './tokens.service.js';
 
@@ -20,32 +24,59 @@ const USER = {
 };
 
 const TOKEN_PAIR = { accessToken: 'access.token.jwt', refreshToken: 'refresh.token.jwt' };
-const FAMILY_ID = 'e2a4b9a2-1c3d-4e5f-8a7b-9c0d1e2f3a4b';
+const SESSION_ID = '65f1a2b3c4d5e6f7a8b9c0d1';
+const REFRESH_EXPIRES_AT = new Date(Date.now() + 30 * 24 * 3_600_000);
+const CLIENT = { userAgent: 'Mozilla/5.0', ip: '203.0.113.10' };
 
 describe('AuthService', () => {
   let service: AuthService;
 
-  const usersService = { create: vi.fn(), findById: vi.fn(), updatePassword: vi.fn(), verifyPassword: vi.fn() };
+  const usersService = {
+    create: vi.fn(),
+    delete: vi.fn(),
+    findByEmail: vi.fn(),
+    findById: vi.fn(),
+    markSessionsRevoked: vi.fn(),
+  };
+  const credentialsService = { deleteForUser: vi.fn(), updatePassword: vi.fn(), verifyPassword: vi.fn() };
   const tokensService = { issueTokenPair: vi.fn() };
-  const refreshTokensService = { consume: vi.fn(), persist: vi.fn(), revokeAllForUser: vi.fn() };
+  const refreshTokensService = {
+    consume: vi.fn(),
+    persist: vi.fn(),
+    revokeAllForUser: vi.fn(),
+    revokeSession: vi.fn(),
+  };
+  const sessionsService = {
+    belongsToUser: vi.fn(),
+    findForUser: vi.fn(),
+    start: vi.fn(),
+    touch: vi.fn(),
+  };
   const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
   const securityEvents = { record: vi.fn() };
   const emailVerificationService = { sendVerification: vi.fn() };
+  const actionTokensService = { deleteForUser: vi.fn() };
+  const mailService = { send: vi.fn() };
 
   beforeEach(async () => {
     vi.resetAllMocks();
     tokensService.issueTokenPair.mockResolvedValue(TOKEN_PAIR);
-    refreshTokensService.persist.mockResolvedValue(undefined);
+    refreshTokensService.persist.mockResolvedValue(REFRESH_EXPIRES_AT);
+    sessionsService.start.mockResolvedValue(SESSION_ID);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: UsersService, useValue: usersService },
+        { provide: CredentialsService, useValue: credentialsService },
         { provide: TokensService, useValue: tokensService },
         { provide: RefreshTokensService, useValue: refreshTokensService },
         { provide: SignInLockoutService, useValue: signInLockoutService },
         { provide: SecurityEventsService, useValue: securityEvents },
         { provide: EmailVerificationService, useValue: emailVerificationService },
+        { provide: ActionTokensService, useValue: actionTokensService },
+        { provide: MailService, useValue: mailService },
+        { provide: SessionsService, useValue: sessionsService },
       ],
     }).compile();
 
@@ -63,34 +94,42 @@ describe('AuthService', () => {
     });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
-    expect(tokensService.issueTokenPair).toHaveBeenCalledWith(USER.id);
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, expect.any(String));
+    expect(tokensService.issueTokenPair).toHaveBeenCalledWith(USER.id, SESSION_ID);
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, SESSION_ID);
     expect(emailVerificationService.sendVerification).toHaveBeenCalledWith(USER);
   });
 
   it('signs in with valid credentials and starts a session in a fresh token family', async () => {
-    usersService.verifyPassword.mockResolvedValue(USER);
+    usersService.findByEmail.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(true);
 
     const response = await service.signIn({ email: USER.email, password: 'Secret123' });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
-    expect(usersService.verifyPassword).toHaveBeenCalledWith(USER.email, 'Secret123');
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, expect.any(String));
+    expect(usersService.findByEmail).toHaveBeenCalledWith(USER.email);
+    expect(credentialsService.verifyPassword).toHaveBeenCalledWith(USER.id, 'Secret123');
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, SESSION_ID);
   });
 
-  it('starts a distinct token family for every sign-in', async () => {
-    usersService.verifyPassword.mockResolvedValue(USER);
+  it('opens a device session per sign-in and keeps it alive for as long as the refresh token', async () => {
+    usersService.findByEmail.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(true);
+    sessionsService.start.mockResolvedValueOnce('session-one').mockResolvedValueOnce('session-two');
 
-    await service.signIn({ email: USER.email, password: 'Secret123' });
-    await service.signIn({ email: USER.email, password: 'Secret123' });
+    await service.signIn({ email: USER.email, password: 'Secret123' }, CLIENT);
+    await service.signIn({ email: USER.email, password: 'Secret123' }, CLIENT);
 
-    const [, firstFamily] = refreshTokensService.persist.mock.calls[0];
-    const [, secondFamily] = refreshTokensService.persist.mock.calls[1];
-    expect(firstFamily).not.toBe(secondFamily);
+    expect(sessionsService.start).toHaveBeenCalledWith(USER.id, CLIENT);
+    expect(refreshTokensService.persist.mock.calls.map(([, sessionId]) => sessionId)).toEqual([
+      'session-one',
+      'session-two',
+    ]);
+    expect(sessionsService.touch).toHaveBeenCalledWith('session-one', CLIENT, REFRESH_EXPIRES_AT);
   });
 
   it('rejects bad credentials with a generic 401, records the failure and issues no tokens', async () => {
-    usersService.verifyPassword.mockResolvedValue(null);
+    usersService.findByEmail.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(false);
 
     await expect(service.signIn({ email: USER.email, password: 'Wrong123' })).rejects.toThrow(
       new AppException(401, ErrorCode.InvalidCredentials, 'Invalid email or password'),
@@ -102,8 +141,19 @@ describe('AuthService', () => {
     expect(refreshTokensService.persist).not.toHaveBeenCalled();
   });
 
+  it('still runs the password verification for an unknown email, against no account', async () => {
+    usersService.findByEmail.mockResolvedValue(null);
+    credentialsService.verifyPassword.mockResolvedValue(false);
+
+    await expect(service.signIn({ email: 'missing@example.com', password: 'Secret123' })).rejects.toThrow(
+      new AppException(401, ErrorCode.InvalidCredentials, 'Invalid email or password'),
+    );
+    expect(credentialsService.verifyPassword).toHaveBeenCalledWith(null, 'Secret123');
+  });
+
   it('checks the lockout before verifying credentials and resets it after success', async () => {
-    usersService.verifyPassword.mockResolvedValue(USER);
+    usersService.findByEmail.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(true);
 
     await service.signIn({ email: USER.email, password: 'Secret123' });
 
@@ -117,19 +167,21 @@ describe('AuthService', () => {
     signInLockoutService.assertNotLocked.mockRejectedValue(locked);
 
     await expect(service.signIn({ email: USER.email, password: 'Secret123' })).rejects.toThrow(locked);
-    expect(usersService.verifyPassword).not.toHaveBeenCalled();
+    expect(credentialsService.verifyPassword).not.toHaveBeenCalled();
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
   });
 
   it('rotates: consumes the presented refresh token and issues the next pair in the same family', async () => {
-    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, sessionId: SESSION_ID });
     usersService.findById.mockResolvedValue(USER);
 
     const response = await service.refresh({ refreshToken: 'valid.refresh.jwt' });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
     expect(refreshTokensService.consume).toHaveBeenCalledWith('valid.refresh.jwt');
-    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, FAMILY_ID);
+    expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, SESSION_ID);
+    // Rotation stays in the session it was given; no new device appears in the list.
+    expect(sessionsService.start).not.toHaveBeenCalled();
   });
 
   it('rejects a refresh token that cannot be consumed with a generic 401 and issues nothing', async () => {
@@ -142,7 +194,7 @@ describe('AuthService', () => {
   });
 
   it('rejects a refresh token whose account no longer exists with the same generic 401', async () => {
-    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, sessionId: SESSION_ID });
     usersService.findById.mockResolvedValue(null);
 
     await expect(service.refresh({ refreshToken: 'orphaned.refresh.jwt' })).rejects.toThrow(
@@ -153,7 +205,7 @@ describe('AuthService', () => {
 
   it('changes the password: revokes every session, resets the lockout and hands back a fresh session', async () => {
     usersService.findById.mockResolvedValue(USER);
-    usersService.updatePassword.mockResolvedValue(USER);
+    credentialsService.updatePassword.mockResolvedValue(true);
 
     const response = await service.changePassword(USER.id, {
       currentPassword: 'OldSecret123',
@@ -161,15 +213,17 @@ describe('AuthService', () => {
     });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
-    expect(usersService.updatePassword).toHaveBeenCalledWith(USER.id, 'OldSecret123', 'NewSecret123');
+    expect(credentialsService.updatePassword).toHaveBeenCalledWith(USER.id, 'OldSecret123', 'NewSecret123');
     expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
+    // The other half of "sign out everywhere": access tokens issued earlier stop authenticating.
+    expect(usersService.markSessionsRevoked).toHaveBeenCalledWith(USER.id);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.PasswordChanged, { userId: USER.id });
     expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
   });
 
   it('rejects a wrong current password with 400, counts it toward the lockout and revokes nothing', async () => {
     usersService.findById.mockResolvedValue(USER);
-    usersService.updatePassword.mockResolvedValue(null);
+    credentialsService.updatePassword.mockResolvedValue(false);
 
     await expect(
       service.changePassword(USER.id, { currentPassword: 'Wrong1234', newPassword: 'NewSecret123' }),
@@ -180,6 +234,7 @@ describe('AuthService', () => {
     });
     expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
     expect(refreshTokensService.revokeAllForUser).not.toHaveBeenCalled();
+    expect(usersService.markSessionsRevoked).not.toHaveBeenCalled();
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
   });
 
@@ -191,17 +246,92 @@ describe('AuthService', () => {
     await expect(
       service.changePassword(USER.id, { currentPassword: 'OldSecret123', newPassword: 'NewSecret123' }),
     ).rejects.toThrow(locked);
-    expect(usersService.updatePassword).not.toHaveBeenCalled();
+    expect(credentialsService.updatePassword).not.toHaveBeenCalled();
   });
 
-  it('logs out by consuming the token, and stays idempotent for an unredeemable one', async () => {
-    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, familyId: FAMILY_ID });
+  it('deletes the account: removes the user first, then everything each module owns', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(true);
+
+    await service.deleteAccount(USER.id, { currentPassword: 'Secret123' });
+
+    expect(usersService.delete).toHaveBeenCalledWith(USER.id);
+    expect(credentialsService.deleteForUser).toHaveBeenCalledWith(USER.id);
+    expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
+    expect(actionTokensService.deleteForUser).toHaveBeenCalledWith(USER.id);
+    expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.AccountDeleted, { userId: USER.id });
+    expect(mailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: USER.email }));
+  });
+
+  it('refuses to delete the account on a wrong password, counts it toward the lockout and removes nothing', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(false);
+
+    await expect(service.deleteAccount(USER.id, { currentPassword: 'Wrong1234' })).rejects.toMatchObject({
+      code: ErrorCode.WrongCurrentPassword,
+      details: [{ field: 'currentPassword' }],
+    });
+    expect(signInLockoutService.recordFailure).toHaveBeenCalledWith(USER.email);
+    expect(usersService.delete).not.toHaveBeenCalled();
+    expect(credentialsService.deleteForUser).not.toHaveBeenCalled();
+    expect(mailService.send).not.toHaveBeenCalled();
+  });
+
+  it('refuses to delete the account while the email is locked, before verifying anything', async () => {
+    usersService.findById.mockResolvedValue(USER);
+    const locked = new HttpException('Too many failed sign-in attempts, try again later', 429);
+    signInLockoutService.assertNotLocked.mockRejectedValue(locked);
+
+    await expect(service.deleteAccount(USER.id, { currentPassword: 'Secret123' })).rejects.toThrow(locked);
+    expect(credentialsService.verifyPassword).not.toHaveBeenCalled();
+    expect(usersService.delete).not.toHaveBeenCalled();
+  });
+
+  it('logs out by ending the device session, and stays idempotent for an unredeemable token', async () => {
+    refreshTokensService.consume.mockResolvedValue({ userId: USER.id, sessionId: SESSION_ID });
     await expect(service.logout({ refreshToken: 'valid.refresh.jwt' })).resolves.toBeUndefined();
+    expect(refreshTokensService.revokeSession).toHaveBeenCalledWith(SESSION_ID);
 
     refreshTokensService.consume.mockResolvedValue(null);
     await expect(service.logout({ refreshToken: 'already.dead.jwt' })).resolves.toBeUndefined();
 
     expect(refreshTokensService.consume).toHaveBeenCalledTimes(2);
+    expect(refreshTokensService.revokeSession).toHaveBeenCalledTimes(1);
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  it('lists the devices and marks the one the request came from', async () => {
+    const summaries = [
+      { id: SESSION_ID, lastSeenAt: new Date(), createdAt: new Date() },
+      { id: 'other-session', lastSeenAt: new Date(), createdAt: new Date() },
+    ];
+    sessionsService.findForUser.mockResolvedValue(summaries);
+
+    const sessions = await service.listSessions(USER.id, SESSION_ID);
+
+    expect(sessions.map((session) => session.current)).toEqual([true, false]);
+  });
+
+  it('revokes one device session after checking it belongs to the caller', async () => {
+    sessionsService.belongsToUser.mockResolvedValue(true);
+
+    await service.revokeSession(USER.id, SESSION_ID);
+
+    expect(sessionsService.belongsToUser).toHaveBeenCalledWith(SESSION_ID, USER.id);
+    expect(refreshTokensService.revokeSession).toHaveBeenCalledWith(SESSION_ID);
+    expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.SessionRevoked, {
+      userId: USER.id,
+      sessionId: SESSION_ID,
+    });
+  });
+
+  it('answers 404 for a session of somebody else, revoking nothing', async () => {
+    sessionsService.belongsToUser.mockResolvedValue(false);
+
+    await expect(service.revokeSession(USER.id, 'someone-elses-session')).rejects.toMatchObject({
+      code: ErrorCode.NotFound,
+    });
+    expect(refreshTokensService.revokeSession).not.toHaveBeenCalled();
   });
 });

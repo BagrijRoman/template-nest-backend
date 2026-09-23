@@ -1,12 +1,13 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { z } from 'zod';
+import { createZodDto, requiredStringSchema } from '../../common/validation/index.js';
 import { ForgotPasswordDto } from './forgotPassword.dto.js';
 
-export class VerifyEmailDto {
-  @ApiProperty({ description: 'Single-use verification token from the verification email' })
-  @IsString()
-  @IsNotEmpty({ message: 'token must not be empty' })
-  token: string;
-}
+export class VerifyEmailDto extends createZodDto(
+  z.object({
+    token: requiredStringSchema('token').meta({
+      description: 'Single-use verification token from the verification email',
+    }),
+  }),
+) {}
 
 export class ResendVerificationDto extends ForgotPasswordDto {}
