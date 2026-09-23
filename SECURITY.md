@@ -28,7 +28,7 @@ Security posture of this backend from the development standpoint: what is implem
 ### Passwords & secrets
 
 - **Breached-password checks**: new passwords (sign-up and password change) are screened against haveibeenpwned via the k-anonymity range API — only the first 5 characters of the sha1 ever leave the server, never the password or its full hash. The check **fails open** (availability wins over an optional hardening layer when the external API is down; the miss is logged) and can be disabled via `BREACHED_PASSWORD_CHECK` — e2e tests disable it and cover the wiring by overriding the provider.
-- Passwords are hashed with **async scrypt** (libuv thread pool — the sync variant would block the event loop and act as a DoS amplifier), salted per hash, compared with `timingSafeEqual`. The hash never leaves the service layer and never reaches API responses or logs.
+- Passwords are hashed with **async scrypt** (libuv thread pool — the sync variant would block the event loop and act as a DoS amplifier), salted per hash, compared with `timingSafeEqual`. Hashes are stored in a separate `credentials` collection (one document per user and credential type), owned by `CredentialsService` which only ever answers booleans — the `User` entity and every user query are secret-free, so a hash cannot reach API responses or logs by accident.
 - All configuration comes from env vars validated at startup (fail fast): secrets are required, have no defaults, need 32+ characters, and `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET` must differ. Real values live only in the gitignored `.env`.
 
 ### Tokens

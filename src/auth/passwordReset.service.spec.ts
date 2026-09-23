@@ -6,6 +6,7 @@ import { ErrorCode } from '../common/errors/index.js';
 import { MailService } from '../common/mail/mail.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
+import { CredentialsService } from '../users/credentials.service.js';
 import { UsersService } from '../users/users.service.js';
 import { PasswordResetToken } from './entities/index.js';
 import { PasswordResetService } from './passwordReset.service.js';
@@ -26,7 +27,8 @@ describe('PasswordResetService', () => {
     deleteMany: vi.fn(),
     findOneAndDelete: vi.fn(),
   };
-  const usersService = { findByEmail: vi.fn(), replacePassword: vi.fn() };
+  const usersService = { findByEmail: vi.fn(), findById: vi.fn() };
+  const credentialsService = { replacePassword: vi.fn() };
   const refreshTokensService = { revokeAllForUser: vi.fn() };
   const mailService = { send: vi.fn() };
   const securityEvents = { record: vi.fn() };
@@ -42,6 +44,7 @@ describe('PasswordResetService', () => {
         PasswordResetService,
         { provide: getModelToken(PasswordResetToken.name), useValue: passwordResetTokenModel },
         { provide: UsersService, useValue: usersService },
+        { provide: CredentialsService, useValue: credentialsService },
         { provide: RefreshTokensService, useValue: refreshTokensService },
         { provide: MailService, useValue: mailService },
         { provide: SecurityEventsService, useValue: securityEvents },
@@ -90,12 +93,12 @@ describe('PasswordResetService', () => {
 
   it('resets: consumes the token by hash, replaces the password, revokes every session, notifies', async () => {
     passwordResetTokenModel.findOneAndDelete.mockReturnValue(withLean({ userId: USER.id, expiresAt: FUTURE }));
-    usersService.replacePassword.mockResolvedValue(USER);
+    usersService.findById.mockResolvedValue(USER);
 
     await service.resetPassword('raw-token', 'NewSecret123');
 
     expect(passwordResetTokenModel.findOneAndDelete).toHaveBeenCalledWith({ tokenHash: sha256('raw-token') });
-    expect(usersService.replacePassword).toHaveBeenCalledWith(USER.id, 'NewSecret123');
+    expect(credentialsService.replacePassword).toHaveBeenCalledWith(USER.id, 'NewSecret123');
     expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.PasswordResetCompleted, { userId: USER.id });
     expect(mailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: USER.email }));
@@ -109,8 +112,18 @@ describe('PasswordResetService', () => {
       message: 'Invalid or expired reset token',
       details: [{ field: 'token' }],
     });
-    expect(usersService.replacePassword).not.toHaveBeenCalled();
+    expect(credentialsService.replacePassword).not.toHaveBeenCalled();
     expect(refreshTokensService.revokeAllForUser).not.toHaveBeenCalled();
+  });
+
+  it('rejects a token whose account vanished, without touching credentials', async () => {
+    passwordResetTokenModel.findOneAndDelete.mockReturnValue(withLean({ userId: USER.id, expiresAt: FUTURE }));
+    usersService.findById.mockResolvedValue(null);
+
+    await expect(service.resetPassword('orphaned', 'NewSecret123')).rejects.toMatchObject({
+      code: ErrorCode.InvalidResetToken,
+    });
+    expect(credentialsService.replacePassword).not.toHaveBeenCalled();
   });
 
   it('rejects a logically expired token even before TTL purges it, with the same 400', async () => {
@@ -121,6 +134,6 @@ describe('PasswordResetService', () => {
       message: 'Invalid or expired reset token',
       details: [{ field: 'token' }],
     });
-    expect(usersService.replacePassword).not.toHaveBeenCalled();
+    expect(credentialsService.replacePassword).not.toHaveBeenCalled();
   });
 });

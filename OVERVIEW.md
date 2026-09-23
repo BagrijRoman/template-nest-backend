@@ -47,7 +47,7 @@ migrate-mongo · GitHub Actions.
 - **Sign-up and sign-in with email** (`POST /auth/sign-up`, `POST /auth/sign-in`): password strength rules,
   normalisation, race-safe duplicate handling, and two-layer anti-enumeration on sign-in (identical 401 plus
   equalised hashing time).
-- **Password hashing** with salted async scrypt and timing-safe comparison.
+- **Password hashing** with salted async scrypt and timing-safe comparison; hashes live in a separate `credentials` collection, apart from `users`.
 - **JWT access + refresh token pairs** with distinct secrets and minimal payloads.
 - **Refresh tokens stored server-side as hashes**, single-use, rotated on every `POST /auth/refresh`, grouped
   into families (one per device session). A replayed token revokes its whole family and leaves other sessions alone.

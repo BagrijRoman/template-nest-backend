@@ -62,13 +62,20 @@ describe('POST /auth/sign-up (e2e)', () => {
     expect(JSON.stringify(response.body)).not.toContain('assword');
   });
 
-  it('persists the user with a hashed password, not the plaintext one', async () => {
+  it('persists the password only as a hash in the credentials collection, never on the user', async () => {
     await signUp(validBody).expect(201);
 
-    const persisted = await connection.collection('users').findOne({ email });
-    expect(persisted).not.toBeNull();
-    expect(persisted?.passwordHash).toMatch(PASSWORD_HASH_PATTERN);
-    expect(persisted?.password).toBeUndefined();
+    const persistedUser = await connection
+      .collection('users')
+      .findOne({ email });
+    expect(persistedUser).not.toBeNull();
+    expect(persistedUser?.password).toBeUndefined();
+    expect(persistedUser?.passwordHash).toBeUndefined();
+
+    const credential = await connection
+      .collection('credentials')
+      .findOne({ userId: persistedUser?._id.toString(), type: 'password' });
+    expect(credential?.secretHash).toMatch(PASSWORD_HASH_PATTERN);
   });
 
   it('rejects a duplicate email with 409 and the standard error shape', async () => {

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppException, ErrorCode, unauthenticatedException } from '../common/errors/index.js';
-import type { SafeUser } from '../users/entities/index.js';
+import { CredentialsService } from '../users/credentials.service.js';
+import type { UserProfile } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthResponseDto, ChangePasswordDto, RefreshTokenDto, SignInDto, SignUpDto } from './dto/index.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
@@ -20,6 +21,7 @@ const WRONG_CURRENT_PASSWORD_MESSAGE = 'Current password is incorrect';
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
+    private readonly credentialsService: CredentialsService,
     private readonly tokensService: TokensService,
     private readonly refreshTokensService: RefreshTokensService,
     private readonly signInLockoutService: SignInLockoutService,
@@ -37,8 +39,10 @@ export class AuthService {
   async signIn(signInDto: SignInDto): Promise<AuthResponseDto> {
     await this.signInLockoutService.assertNotLocked(signInDto.email);
 
-    const user = await this.usersService.verifyPassword(signInDto.email, signInDto.password);
-    if (!user) {
+    const user = await this.usersService.findByEmail(signInDto.email);
+    // Runs for an unknown email too: the dummy verification inside keeps response timing uniform.
+    const isValid = await this.credentialsService.verifyPassword(user?.id ?? null, signInDto.password);
+    if (!user || !isValid) {
       await this.signInLockoutService.recordFailure(signInDto.email);
       this.securityEvents.record(SecurityEvent.SignInFailed, { email: signInDto.email });
       throw new AppException(HttpStatus.UNAUTHORIZED, ErrorCode.InvalidCredentials, INVALID_CREDENTIALS_MESSAGE);
@@ -92,12 +96,12 @@ export class AuthService {
 
     await this.signInLockoutService.assertNotLocked(user.email);
 
-    const updated = await this.usersService.updatePassword(
+    const isChanged = await this.credentialsService.updatePassword(
       userId,
       changePasswordDto.currentPassword,
       changePasswordDto.newPassword,
     );
-    if (!updated) {
+    if (!isChanged) {
       await this.signInLockoutService.recordFailure(user.email);
       this.securityEvents.record(SecurityEvent.PasswordChangeRejected, { userId });
       // 400, not 401: a 401 would make clients treat the access token as dead and force a logout.
@@ -113,14 +117,14 @@ export class AuthService {
     await this.signInLockoutService.reset(user.email);
     await this.refreshTokensService.revokeAllForUser(userId);
     this.securityEvents.record(SecurityEvent.PasswordChanged, { userId });
-    return this.issueSession(updated);
+    return this.issueSession(user);
   }
 
   /**
    * Issues a token pair and persists the refresh token so it can be redeemed (and revoked) later.
    * Sign-up/sign-in start a new token family (one per device session); rotation stays in its own.
    */
-  private async issueSession(user: SafeUser, familyId: string = randomUUID()): Promise<AuthResponseDto> {
+  private async issueSession(user: UserProfile, familyId: string = randomUUID()): Promise<AuthResponseDto> {
     const tokenPair = await this.tokensService.issueTokenPair(user.id);
     await this.refreshTokensService.persist(tokenPair.refreshToken, familyId);
     return { ...tokenPair, user };

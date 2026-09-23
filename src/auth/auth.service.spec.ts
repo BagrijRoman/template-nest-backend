@@ -2,6 +2,7 @@ import { HttpException } from '@nestjs/common';
 import { AppException, ErrorCode } from '../common/errors/index.js';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CredentialsService } from '../users/credentials.service.js';
 import { UsersService } from '../users/users.service.js';
 import { AuthService } from './auth.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
@@ -25,7 +26,8 @@ const FAMILY_ID = 'e2a4b9a2-1c3d-4e5f-8a7b-9c0d1e2f3a4b';
 describe('AuthService', () => {
   let service: AuthService;
 
-  const usersService = { create: vi.fn(), findById: vi.fn(), updatePassword: vi.fn(), verifyPassword: vi.fn() };
+  const usersService = { create: vi.fn(), findByEmail: vi.fn(), findById: vi.fn() };
+  const credentialsService = { updatePassword: vi.fn(), verifyPassword: vi.fn() };
   const tokensService = { issueTokenPair: vi.fn() };
   const refreshTokensService = { consume: vi.fn(), persist: vi.fn(), revokeAllForUser: vi.fn() };
   const signInLockoutService = { assertNotLocked: vi.fn(), recordFailure: vi.fn(), reset: vi.fn() };
@@ -41,6 +43,7 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         { provide: UsersService, useValue: usersService },
+        { provide: CredentialsService, useValue: credentialsService },
         { provide: TokensService, useValue: tokensService },
         { provide: RefreshTokensService, useValue: refreshTokensService },
         { provide: SignInLockoutService, useValue: signInLockoutService },
@@ -69,17 +72,20 @@ describe('AuthService', () => {
   });
 
   it('signs in with valid credentials and starts a session in a fresh token family', async () => {
-    usersService.verifyPassword.mockResolvedValue(USER);
+    usersService.findByEmail.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(true);
 
     const response = await service.signIn({ email: USER.email, password: 'Secret123' });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
-    expect(usersService.verifyPassword).toHaveBeenCalledWith(USER.email, 'Secret123');
+    expect(usersService.findByEmail).toHaveBeenCalledWith(USER.email);
+    expect(credentialsService.verifyPassword).toHaveBeenCalledWith(USER.id, 'Secret123');
     expect(refreshTokensService.persist).toHaveBeenCalledWith(TOKEN_PAIR.refreshToken, expect.any(String));
   });
 
   it('starts a distinct token family for every sign-in', async () => {
-    usersService.verifyPassword.mockResolvedValue(USER);
+    usersService.findByEmail.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(true);
 
     await service.signIn({ email: USER.email, password: 'Secret123' });
     await service.signIn({ email: USER.email, password: 'Secret123' });
@@ -90,7 +96,8 @@ describe('AuthService', () => {
   });
 
   it('rejects bad credentials with a generic 401, records the failure and issues no tokens', async () => {
-    usersService.verifyPassword.mockResolvedValue(null);
+    usersService.findByEmail.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(false);
 
     await expect(service.signIn({ email: USER.email, password: 'Wrong123' })).rejects.toThrow(
       new AppException(401, ErrorCode.InvalidCredentials, 'Invalid email or password'),
@@ -102,8 +109,19 @@ describe('AuthService', () => {
     expect(refreshTokensService.persist).not.toHaveBeenCalled();
   });
 
+  it('still runs the password verification for an unknown email, against no account', async () => {
+    usersService.findByEmail.mockResolvedValue(null);
+    credentialsService.verifyPassword.mockResolvedValue(false);
+
+    await expect(service.signIn({ email: 'missing@example.com', password: 'Secret123' })).rejects.toThrow(
+      new AppException(401, ErrorCode.InvalidCredentials, 'Invalid email or password'),
+    );
+    expect(credentialsService.verifyPassword).toHaveBeenCalledWith(null, 'Secret123');
+  });
+
   it('checks the lockout before verifying credentials and resets it after success', async () => {
-    usersService.verifyPassword.mockResolvedValue(USER);
+    usersService.findByEmail.mockResolvedValue(USER);
+    credentialsService.verifyPassword.mockResolvedValue(true);
 
     await service.signIn({ email: USER.email, password: 'Secret123' });
 
@@ -117,7 +135,7 @@ describe('AuthService', () => {
     signInLockoutService.assertNotLocked.mockRejectedValue(locked);
 
     await expect(service.signIn({ email: USER.email, password: 'Secret123' })).rejects.toThrow(locked);
-    expect(usersService.verifyPassword).not.toHaveBeenCalled();
+    expect(credentialsService.verifyPassword).not.toHaveBeenCalled();
     expect(tokensService.issueTokenPair).not.toHaveBeenCalled();
   });
 
@@ -153,7 +171,7 @@ describe('AuthService', () => {
 
   it('changes the password: revokes every session, resets the lockout and hands back a fresh session', async () => {
     usersService.findById.mockResolvedValue(USER);
-    usersService.updatePassword.mockResolvedValue(USER);
+    credentialsService.updatePassword.mockResolvedValue(true);
 
     const response = await service.changePassword(USER.id, {
       currentPassword: 'OldSecret123',
@@ -161,7 +179,7 @@ describe('AuthService', () => {
     });
 
     expect(response).toEqual({ ...TOKEN_PAIR, user: USER });
-    expect(usersService.updatePassword).toHaveBeenCalledWith(USER.id, 'OldSecret123', 'NewSecret123');
+    expect(credentialsService.updatePassword).toHaveBeenCalledWith(USER.id, 'OldSecret123', 'NewSecret123');
     expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(USER.id);
     expect(securityEvents.record).toHaveBeenCalledWith(SecurityEvent.PasswordChanged, { userId: USER.id });
     expect(signInLockoutService.reset).toHaveBeenCalledWith(USER.email);
@@ -169,7 +187,7 @@ describe('AuthService', () => {
 
   it('rejects a wrong current password with 400, counts it toward the lockout and revokes nothing', async () => {
     usersService.findById.mockResolvedValue(USER);
-    usersService.updatePassword.mockResolvedValue(null);
+    credentialsService.updatePassword.mockResolvedValue(false);
 
     await expect(
       service.changePassword(USER.id, { currentPassword: 'Wrong1234', newPassword: 'NewSecret123' }),
@@ -191,7 +209,7 @@ describe('AuthService', () => {
     await expect(
       service.changePassword(USER.id, { currentPassword: 'OldSecret123', newPassword: 'NewSecret123' }),
     ).rejects.toThrow(locked);
-    expect(usersService.updatePassword).not.toHaveBeenCalled();
+    expect(credentialsService.updatePassword).not.toHaveBeenCalled();
   });
 
   it('logs out by consuming the token, and stays idempotent for an unredeemable one', async () => {

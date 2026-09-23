@@ -5,7 +5,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MailService } from '../common/mail/mail.service.js';
 import { SecurityEvent, SecurityEventsService } from '../common/securityEvents/securityEvents.service.js';
-import type { SafeUser } from '../users/entities/index.js';
+import type { UserProfile } from '../users/entities/index.js';
 import { UsersService } from '../users/users.service.js';
 import { AccountRateLimitService } from './accountRateLimit.service.js';
 import { EMAIL_ACTION_LIMIT, EMAIL_ACTION_WINDOW_MS, EMAIL_VERIFICATION_TOKEN_TTL_MS } from './auth.constants.js';
@@ -71,7 +71,7 @@ export class EmailVerificationService {
   }
 
   /** Issues a fresh verification token (invalidating any previous one) and emails it. */
-  async sendVerification(user: SafeUser): Promise<void> {
+  async sendVerification(user: UserProfile): Promise<void> {
     await this.emailVerificationTokenModel.deleteMany({ userId: user.id });
 
     const token = randomBytes(VERIFICATION_TOKEN_BYTES).toString('hex');

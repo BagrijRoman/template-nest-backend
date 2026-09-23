@@ -34,7 +34,7 @@ A husky + lint-staged pre-commit hook (`.husky/pre-commit`, activated by the `pr
 
 - REST conventions: plural nouns (`/users`), standard verbs and status codes — 201 for create, 204 for delete, 404 via `NotFoundException`, 409 via `ConflictException`.
 - Every list endpoint is paginated with `limit`/`offset` query params and returns an envelope: `{ data, total, limit, offset }`. Never return unbounded arrays.
-- Never return an entity directly. Services return safe/response shapes (see `SafeUser` in `src/users/entities/user.entity.ts`) — sensitive fields like `passwordHash` must never leave the service layer.
+- Never return an entity directly. Services return response shapes (see `UserProfile` in `src/users/entities/user.entity.ts`: the entity plus `id` as a string). Secrets are not a field-filtering concern: the `User` entity holds none by design (see Security).
 - Every endpoint carries `@nestjs/swagger` decorators (`@ApiOperation`, `@ApiCreatedResponse`, …); request DTOs document themselves from their zod schema, response DTOs carry `@ApiProperty`. See the API documentation section below.
 
 ## API documentation (Swagger)
@@ -77,6 +77,7 @@ Swagger is mandatory: the API documents itself automatically via `@nestjs/swagge
 ## Security
 
 - Passwords are hashed with the existing scrypt helpers in `src/users/password.util.ts` (salted, `timingSafeEqual` comparison, async scrypt — the sync variant blocks the event loop on every request and is a DoS amplification vector, never reintroduce it). Never store or log plaintext passwords; never roll new crypto.
+- Secret material lives only in the `credentials` collection (`src/users/entities/credential.entity.ts`: one document per user and credential `type` — `password` today, OAuth / passkey / TOTP later), owned by `CredentialsService` (`src/users/credentials.service.ts`), which returns booleans and never a hash. The `User` entity carries no secret, so no user query can leak one; never add a secret field to `User` and never inject the `Credential` model anywhere else. Sign-up writes two documents without a transaction (standalone MongoDB): `UsersService.create` deletes the user again when the credential insert fails — keep that compensation when touching the flow.
 - Authorization defaults to closed: the global `JwtAuthGuard` (`src/common/guards/jwtAuth.guard.ts`, registered as `APP_GUARD` after the throttler) demands a valid access token on every route; public routes are explicitly marked with `@Public()` (`src/common/decorators/public.decorator.ts`), and handlers read the authenticated user via `@CurrentUser()`. Never weaken the guard — new routes are protected by default.
 - `helmet` is wired as global middleware in `AppModule.configure` (CSP enabled only in production — the default policy breaks Swagger UI, which is served outside production anyway); never remove it.
 - CORS is whitelist-only: origins come from the validated `CORS_ORIGINS` env var (comma-separated, parsed by `src/config/corsOrigins.util.ts`, enabled with credentials in `setupApp`); unset means CORS stays disabled. Never enable a wildcard origin.

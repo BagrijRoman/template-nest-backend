@@ -12,7 +12,7 @@ import {
 import { CurrentUser } from '../common/decorators/currentUser.decorator.js';
 import type { AuthenticatedUser } from '../common/guards/jwtAuth.guard.js';
 import { UserResponseDto } from './dto/index.js';
-import type { SafeUser } from './entities/index.js';
+import type { UserProfile } from './entities/index.js';
 import { UsersService } from './users.service.js';
 
 @ApiTags('users')
@@ -26,7 +26,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Get the authenticated user' })
   @ApiOkResponse({ type: UserResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto, description: 'Invalid or missing access token' })
-  async getMe(@CurrentUser() currentUser: AuthenticatedUser): Promise<SafeUser> {
+  async getMe(@CurrentUser() currentUser: AuthenticatedUser): Promise<UserProfile> {
     const user = await this.usersService.findById(currentUser.id);
     if (!user) {
       // The account vanished while its access token was still valid — force a re-auth, not a 404.
