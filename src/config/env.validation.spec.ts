@@ -1,6 +1,3 @@
-// class-transformer/class-validator decorators need the Reflect metadata polyfill;
-// specs that boot Nest get it transitively, this one tests the function directly.
-import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
 import { validateEnv } from './env.validation.js';
 
@@ -22,6 +19,21 @@ describe('validateEnv', () => {
     expect(validated.NODE_ENV).toBe('test');
   });
 
+  it('applies the documented defaults for NODE_ENV and PORT', () => {
+    const config = validConfig();
+    delete config.NODE_ENV;
+    delete config.PORT;
+
+    expect(validateEnv(config)).toMatchObject({ NODE_ENV: 'development', PORT: 3000 });
+  });
+
+  it('names the variable in every problem, including a missing one', () => {
+    const config = validConfig();
+    delete config.MONGODB_URI;
+
+    expect(() => validateEnv(config)).toThrow(/^Invalid environment configuration:\nMONGODB_URI: /);
+  });
+
   it('rejects equal access and refresh secrets', () => {
     const secret = 's'.repeat(32);
 
@@ -39,7 +51,7 @@ describe('validateEnv', () => {
 
   it('rejects a too-short secret', () => {
     expect(() => validateEnv({ ...validConfig(), JWT_REFRESH_SECRET: 'short' })).toThrow(
-      /JWT_REFRESH_SECRET must be a string of at least 32 characters/,
+      /JWT_REFRESH_SECRET: must be a string of at least 32 characters/,
     );
   });
 
