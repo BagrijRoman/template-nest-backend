@@ -11,6 +11,8 @@ const MONGO_DUPLICATE_KEY_ERROR_CODE = 11000;
 
 type LeanUser = User & { _id: Types.ObjectId };
 
+export type UserPage = { data: UserProfile[]; total: number; limit: number; offset: number };
+
 const isDuplicateKeyError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: number }).code === MONGO_DUPLICATE_KEY_ERROR_CODE;
 
@@ -63,6 +65,15 @@ export class UsersService {
   async findByEmail(email: string): Promise<UserProfile | null> {
     const user = await this.userModel.findOne({ email }).lean();
     return user ? this.toUserProfile(user) : null;
+  }
+
+  /** Newest first; `total` lets clients compute page counts. */
+  async findPage(limit: number, offset: number): Promise<UserPage> {
+    const [users, total] = await Promise.all([
+      this.userModel.find().sort({ createdAt: -1, _id: -1 }).skip(offset).limit(limit).lean(),
+      this.userModel.countDocuments(),
+    ]);
+    return { data: users.map((user) => this.toUserProfile(user)), total, limit, offset };
   }
 
   /** Operator action (see `npm run user:set-role`); there is deliberately no endpoint for it. */

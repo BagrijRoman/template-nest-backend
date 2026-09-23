@@ -14,9 +14,22 @@ export interface ZodDto<TSchema extends z.ZodObject = z.ZodObject> extends Type<
 
 type JsonSchema = z.core.JSONSchema.BaseSchema;
 
-const toApiProperty = ({ pattern, ...property }: JsonSchema, isRequired: boolean): ApiPropertyOptions =>
-  // A named format (email, uuid, …) already documents the shape; the backing regex would only clutter the docs.
-  ({ ...property, ...(property.format ? {} : { pattern }), required: isRequired }) as ApiPropertyOptions;
+const isSafeIntegerBound = (value: unknown): boolean =>
+  value === Number.MAX_SAFE_INTEGER || value === Number.MIN_SAFE_INTEGER;
+
+const toApiProperty = (
+  { pattern, minimum, maximum, ...property }: JsonSchema,
+  isRequired: boolean,
+): ApiPropertyOptions =>
+  ({
+    ...property,
+    // A named format (email, uuid, …) already documents the shape; the backing regex would only clutter the docs.
+    ...(property.format ? {} : { pattern }),
+    // `.int()` emits the safe-integer bounds as limits; they are noise, not a rule anyone chose.
+    ...(isSafeIntegerBound(minimum) ? {} : { minimum }),
+    ...(isSafeIntegerBound(maximum) ? {} : { maximum }),
+    required: isRequired,
+  }) as ApiPropertyOptions;
 
 const openApiProperties = (schema: z.ZodObject): Record<string, ApiPropertyOptions> => {
   const { properties = {}, required = [] } = z.toJSONSchema(schema, {

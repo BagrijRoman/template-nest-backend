@@ -30,9 +30,11 @@ describe('UsersService', () => {
   let service: UsersService;
 
   const userModel = {
+    countDocuments: vi.fn(),
     create: vi.fn(),
     deleteOne: vi.fn(),
     exists: vi.fn(),
+    find: vi.fn(),
     findById: vi.fn(),
     findByIdAndUpdate: vi.fn(),
     findOne: vi.fn(),
@@ -168,6 +170,26 @@ describe('UsersService', () => {
 
     expect(user?.emailVerified).toBe(false);
     expect(user?.role).toBe(UserRole.User);
+  });
+
+  it('pages users newest first and reports the total', async () => {
+    const docs = [leanUser(), leanUser({ email: 'john@example.com' })];
+    const query = {
+      sort: vi.fn().mockReturnThis(),
+      skip: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      lean: vi.fn().mockResolvedValue(docs),
+    };
+    userModel.find.mockReturnValue(query);
+    userModel.countDocuments.mockResolvedValue(42);
+
+    const page = await service.findPage(2, 10);
+
+    expect(page).toEqual({ data: expect.any(Array), total: 42, limit: 2, offset: 10 });
+    expect(page.data.map((user) => user.id)).toEqual(docs.map((doc) => doc._id.toString()));
+    expect(query.sort).toHaveBeenCalledWith({ createdAt: -1, _id: -1 });
+    expect(query.skip).toHaveBeenCalledWith(10);
+    expect(query.limit).toHaveBeenCalledWith(2);
   });
 
   it('sets the role by email and records the change', async () => {
